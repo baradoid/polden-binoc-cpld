@@ -50,8 +50,8 @@ one_wire(
  .reset(oneWireReset),
  .wire_out(BGPIO_ONEWIRE),
  .wire_in(BGPIO_ONEWIRE),
- .in_byte(BGPIO[15:7]),
- .out_byte(outByte),
+ .in_byte(oneWireByteBufIn[7:0]),
+ .out_byte(oneWireByteBufOut[7:0]),
  .read_byte(oneWireRead),
  .write_byte(oneWireWrite),
  .busy(oneWireBusy)
@@ -85,7 +85,14 @@ integer clockOneWireDivider = 0;
 integer oneWireDelay = 0;
 
 reg oneWireClock=0, oneWireReset=0, oneWireRead=0, oneWireWrite=0;
+reg [7:0] oneWireByteBufIn;
+reg [7:0] oneWireByteBufOut;
+reg [7:0] oneWireByteScrPad[9:0];
+reg [3:0] oneWireByteScrPadInd;
 wire oneWireBusy;
+reg oneWireBusyLast;
+reg oneWireBusyLastLast;
+
 assign BGPIO[33] = oneWireBusy;
 
 reg start;
@@ -141,10 +148,10 @@ always @(posedge CLK_SE_AR) begin
 	end
 end
 
-parameter idle=0, state0=1, state1=2, state2=3, state3=4, state4=5;
+parameter idle=0, state0=1, state1=2, state2=3, state3=4, state4=5, state5=6;
 reg [2:0] state_e;
 
-parameter oneWireIdleState=0, oneWireResetState=1;
+parameter oneWireIdleState=0, oneWireResetState=1, oneWireSkipRomCmd=2, oneWireReadScrPadCmd=3, oneWireReadScrPad=4, oneWireConvertCmd=5, oneWireWaitConvertOk=6;
 reg [2:0] oneWireState_e = oneWireIdleState;
 
 always @(posedge CLK_SE_AR) begin
@@ -152,9 +159,10 @@ always @(posedge CLK_SE_AR) begin
 	case(state_e)
 		idle: uartDataReg <= "a";	
 		state1: uartDataReg <= "b";
-		state2: uartDataReg <= outByte;		
-		state3: uartDataReg <= "\r";
-		state4: uartDataReg <= "\n";	
+		state2: uartDataReg <= oneWireByteScrPad[0];		
+		state3: uartDataReg <= oneWireByteScrPad[1];		
+		state4: uartDataReg <= "\r";
+		state5: uartDataReg <= "\n";			
 	endcase	
 
 	if(start) begin 
@@ -163,23 +171,112 @@ always @(posedge CLK_SE_AR) begin
 			state1: state_e <= state2;		
 			state2: state_e <= state3;
 			state3: state_e <= state4;	
-			state4: state_e <= idle;	
+			state4: state_e <= state5;	
+			state5: state_e <= idle;	
 		endcase	
 	end
 	
-	if(oneWireState_e == oneWireIdleState) begin
-		
-		if(start) begin
-			oneWireReset <= 1;	
-			oneWireState_e <= oneWireResetState;
-		end
+	
+	oneWireBusyLastLast <= oneWireBusyLast;
+	oneWireBusyLast <= oneWireBusy;
+	
+	if(oneWireState_e == oneWireIdleState) begin		
+		if(start) begin			
+			oneWireState_e <= oneWireResetState;								
+		end	
 	end
 	else if(oneWireState_e == oneWireResetState) begin
-		if(oneWireBusy) begin
-			oneWireReset <= 0;		
-			oneWireState_e <= oneWireIdleState;		
+		if((oneWireBusy==0) && (oneWireBusyLast==0)) begin
+			oneWireReset <= 1;		
 		end
+		if((oneWireBusy==1)&&(oneWireBusyLast==0)) begin
+			oneWireReset <= 0;											
+		end
+		if((oneWireBusy==0)&&(oneWireBusyLast==1)) begin
+			oneWireState_e <= oneWireSkipRomCmd;	
+			//oneWireState_e <= oneWireIdleState;					
+		end		
 	end
+	else if(oneWireState_e == oneWireSkipRomCmd) begin
+		if((oneWireBusy==0) && (oneWireBusyLast==0)) begin
+			oneWireWrite <= 1;		
+			oneWireByteBufIn <= 8'hCC;
+		end
+				
+		if((oneWireBusy==1)&&(oneWireBusyLast==0)) begin
+			oneWireWrite <= 0;	
+		end
+		if((oneWireBusy==0)&&(oneWireBusyLast==1)) begin
+			oneWireState_e <= oneWireConvertCmd;		
+			//oneWireState_e <= oneWireIdleState;					
+		end	
+	end	
+	else if(oneWireState_e == oneWireConvertCmd) begin	
+		if((oneWireBusy == 0)&&(oneWireBusyLast==0)) begin
+			oneWireWrite <= 1;		
+			oneWireByteBufIn <= 8'h44;			
+		end
+		if((oneWireBusy==1)&&(oneWireBusyLast==0)) begin
+			oneWireWrite <= 0;	
+		end
+		if((oneWireBusy==0)&&(oneWireBusyLast==1)) begin
+			oneWireState_e <= oneWireReadScrPadCmd;		
+		end
+	end	
+
+
+	else if(oneWireState_e == oneWireWaitConvertOk) begin	
+		if((oneWireBusy == 0)&&(oneWireBusyLast==0)&&(oneWireBusyLastLast==0)) begin
+			oneWireRead <= 1;					
+		end
+		if((oneWireBusy==1)&&(oneWireBusyLast==0)&&(oneWireBusyLastLast==0)) begin
+			oneWireRead <= 0;	
+		end
+		if((oneWireBusy==0)&&(oneWireBusyLast==0)&&(oneWireBusyLastLast==1)) begin
+			if(oneWireByteBufOut == 1) begin
+				oneWireState_e <= oneWireReadScrPadCmd;				
+			end			
+		end
+	end	
+
+	
+	
+	else if(oneWireState_e == oneWireReadScrPadCmd) begin
+		if((oneWireBusy==0) && (oneWireBusyLast==0)) begin
+			oneWireWrite <= 1;		
+			oneWireByteBufIn <= 8'hBE;
+		end
+		if((oneWireBusy==1)&&(oneWireBusyLast==0)) begin
+			oneWireWrite <= 0;							
+		end
+		if((oneWireBusy==0)&&(oneWireBusyLast==1)) begin
+			oneWireByteScrPadInd <= 0;
+			oneWireState_e <= oneWireReadScrPad;		
+			//oneWireState_e <= oneWireIdleState;
+		end
+	end	
+	else if(oneWireState_e == oneWireReadScrPad) begin
+		if((oneWireBusy == 0)&&(oneWireBusyLast==0)) begin
+			oneWireRead <= 1;					
+		end
+		if((oneWireBusy==1)&&(oneWireBusyLast==0)) begin
+			oneWireRead <= 0;											
+		end
+		if((oneWireBusy==0)&&(oneWireBusyLast==1)) begin
+			oneWireByteScrPad[oneWireByteScrPadInd] <= oneWireByteBufOut;		
+			oneWireByteScrPadInd <= oneWireByteScrPadInd + 1;
+			if(oneWireByteScrPadInd == 9) begin
+				oneWireState_e <= oneWireIdleState;	
+			end
+		
+		end
+
+	end	
+
+	
+	
+
+
 	
 	
  end
