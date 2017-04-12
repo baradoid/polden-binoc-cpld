@@ -86,7 +86,7 @@ integer clockCntStart = 0;
 
 
 wire [15:0] oneWireTemperature;
-wire [15:0] data;
+wire [23:0] data;
 
 
 
@@ -125,7 +125,7 @@ always @(posedge CLK_SE_AR) begin
 		clockDivider = clockDivider + 1;			
 	end
 	
-	if(clockCntStart == 1000000) begin
+	if(clockCntStart == 2000000) begin
 		start <= 1'b1;
 		clockCntStart <= 0;	
 	end
@@ -151,8 +151,9 @@ always @(posedge CLK_SE_AR) begin
 			3: uartDataReg <= oneWireTemperature[15:8];		
 			4: uartDataReg <= data[7:0];		
 			5: uartDataReg <= data[15:8];		
-			6: uartDataReg <= "\r";
-			7: uartDataReg <= "\n";	
+			6: uartDataReg <= data[23:16];		
+			7: uartDataReg <= "\r";
+			8: uartDataReg <= "\n";	
 			default: begin
 				uartDataReg <= 0;
 				uartEna <= 0;
