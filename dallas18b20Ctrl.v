@@ -76,7 +76,12 @@ always @(posedge CLK_10MHZ) begin
 	idleState: begin
 			if(start) begin			
 				oneWireState_e <= oneWireResetState;								
-			end					
+			end		
+			else begin
+				//oneWirePinOut <= 1;
+				
+			end
+			
 		end
 	oneWireResetState: begin
 			if(noBusy) begin

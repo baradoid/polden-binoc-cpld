@@ -72,7 +72,7 @@ async_transmitter #(.ClkFrequency(10000000), .Baud(19200)) TXBV(.clk(CLK_SE_AR),
 
 
 dallas18b20Ctrl(.CLK_10MHZ(CLK_SE_AR),
-					 .start(start),
+					 .start(tempMeasStart),
 					 .oneWirePinIn(BGPIO_ONEWIRE),
 					 .oneWirePinOut(oneWireOutput),
 					 .temperature(oneWireTemperature),
@@ -83,6 +83,7 @@ OPNDRN opdn (.in(oneWireOutput), .out(BGPIO_ONEWIRE));
 					 
 integer clockDivider = 0;
 integer clockCntStart = 0;
+integer tempMeasStartCnt = 0;
 
 
 wire [15:0] oneWireTemperature;
@@ -91,6 +92,7 @@ wire [23:0] data;
 
 
 reg start, startL;
+reg tempMeasStart=0;
 
 wire uartStartSignal = ((start==0)&&(startL==1)&&(uartEna==1));
 wire uartPrepDataSignal = ((start==1)&&(startL==0));
@@ -104,7 +106,7 @@ reg uartEna = 0;
 
 //reg[8*16:1] str ="abcd01234";
 
-assign BGPIO[35] = start;
+assign BGPIO[35] = tempMeasStart;
 assign BGPIO[33] = uartStartSignal;
 assign BGPIO[31] = uartPrepDataSignal;
 
@@ -125,7 +127,7 @@ always @(posedge CLK_SE_AR) begin
 		clockDivider = clockDivider + 1;			
 	end
 	
-	if(clockCntStart == 2000000) begin
+	if(clockCntStart == 500000) begin
 		start <= 1'b1;
 		clockCntStart <= 0;	
 	end
@@ -133,6 +135,16 @@ always @(posedge CLK_SE_AR) begin
 		clockCntStart <= clockCntStart + 1;			
 		start <= 1'b0;
 	end
+	
+	if(tempMeasStartCnt == 20000000) begin		
+		tempMeasStartCnt <= 0;	
+		tempMeasStart <= 1'b1;
+	end
+	else begin
+		tempMeasStartCnt <= tempMeasStartCnt + 1;			
+		tempMeasStart <= 1'b0;
+	end
+	
 	
 	if(newDataWire) begin
 		dataIn <= spiDataWire;	
