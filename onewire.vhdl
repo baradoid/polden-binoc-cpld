@@ -6,8 +6,8 @@ entity one_wire is
         port ( reset : in std_logic;
                         read_byte : in std_logic;
                         write_byte : in std_logic;
-                        wire_out : out std_logic;
-                        wire_in : in std_logic;
+                        dWire : inout std_logic;
+                        --wire_in : in std_logic;
                         presense : out std_logic;
                         busy : out std_logic;
                         in_byte : in std_logic_vector (7 downto 0);
@@ -30,7 +30,7 @@ variable f : std_logic;
 begin
 if (clk'event and clk = '1') then
 case (state) is
-        when start => wire_out <= '1';         -- здесь программа посто висит и ждет команд
+        when start => dWire <= 'Z';         -- здесь программа посто висит и ждет команд
                                 busy <= '0';
                                 count <= '0';
                                 if (reset = '1') then        -- пришла команда сбросить шину
@@ -47,24 +47,24 @@ case (state) is
                                         state := wire_0;
                                 end if;
                                         
-        when delay_reset => wire_out <= '0';     -- сбрасываем шину, т. е. выставляем 0 и ждем 480 мкс
+        when delay_reset => dWire <= '0';     -- сбрасываем шину, т. е. выставляем 0 и ждем 480 мкс
                                 count <= '1';
                                 if (counter = 78) then
                                         state := wire_read_presense;
                                         count <= '0';
                                 end if;
                         
-        when wire_read_presense => wire_out <= '1';
+        when wire_read_presense => dWire <= 'Z';
                                 count <= '1';
                                 if (counter = 11) then     -- проверяем ответ от устройства
-                                        presense <= not wire_in;
+                                        presense <= not dWire;
                                 end if;
                                 if (counter = 78) then 
                                         state := start;
                                         count <= '0';
                                 end if;
                                         
-        when wire_0 => wire_out <= '0';                    -- инициируем передачу или прием бита
+        when wire_0 => dWire <= '0';                    -- инициируем передачу или прием бита
                                 if (f = '0') then
                                         state := wire_write;
                                 else 
@@ -73,14 +73,14 @@ case (state) is
                                         
         when wire_write => 
                                 if (in_byte(n_bit) = '1') then   -- по-очереди передаем байт
-                                        wire_out <= '1';
+                                        dWire <= '1';
                                 end if;
                                 state := delay;
                                                                                 
-        when wire_read => wire_out <= '1';
+        when wire_read => dWire <= 'Z';
                                 count <= '1';
                                 if (counter = 1) then     
-                                        out_byte(n_bit) <= wire_in;   -- считываем бит
+                                        out_byte(n_bit) <= dWire;   -- считываем бит
                                         count <= '0';
                                         state := delay;
                                 end if;
@@ -89,7 +89,7 @@ case (state) is
                                 count <= '1';
                                 if (counter = 8) then     -- задержка перед приемом или передачей следующего бита
                                         count <= '0';
-                                        wire_out <= '1';
+                                        dWire <= '1';
                                         if (n_bit = 7) then    -- если все биты приняты/переданы возвращаемся на начало
                                                 n_bit := 0;
                                                 state := start;

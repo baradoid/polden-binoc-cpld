@@ -2,10 +2,11 @@
  module dallas18b20Ctrl(
 input CLK_10MHZ,
 input start,
-input oneWirePinIn,
-output oneWirePinOut,
+inout oneWirePin,
+//output oneWirePinOut,
 output reg [15:0] temperature,
-output reg [23:0] data
+output reg [23:0] data,
+output reg readState
 );
 reg oneWireClock=0, oneWireReset=0, oneWireRead=0, oneWireWrite=0;
 
@@ -39,18 +40,20 @@ parameter reset2ndState=9;
 parameter skipRomCmd2ndState=10;
 parameter convertCmdState=11;
 parameter waitConvertOkState=12;
-parameter reset3ndState=13;
-parameter skipRomCmd3ndState=14;
-parameter convertCmdState1=15;
+parameter waitConvertOkState1=13;
+parameter reset3ndState=14;
+parameter skipRomCmd3ndState=15;
+parameter convertCmdState1=16;
+parameter readPowerSupplyState=17;
 //typedef enum logic [2:0]{ oneWireIdleState, oneWireResetState, oneWireSkipRomCmd, oneWireReadScrPadCmd, oneWireReadScrPad, oneWireConvertCmd, oneWireWaitConvertOk} oneWireState_e;
 //oneWireState_e ows = oneWireIdleState;
-reg [3:0] oneWireState_e = idleState;
+reg [4:0] oneWireState_e = idleState;
 
 one_wire(
  .clk(oneWireClock),
  .reset(oneWireReset),
- .wire_out(oneWirePinOut),
- .wire_in(oneWirePinIn),
+ .dWire(oneWirePin),
+ //.wire_in(oneWirePinIn),
  .in_byte(bufIn[7:0]),
  .out_byte(byteOut[7:0]),
  .read_byte(oneWireRead),
@@ -75,7 +78,8 @@ always @(posedge CLK_10MHZ) begin
 	case(oneWireState_e)
 	idleState: begin
 			if(start) begin			
-				oneWireState_e <= oneWireResetState;								
+				oneWireState_e <= oneWireResetState;
+				readState <= 0;
 			end		
 			else begin
 				//oneWirePinOut <= 1;
@@ -160,7 +164,8 @@ always @(posedge CLK_10MHZ) begin
 	
 	reset2ndState: begin
 		if(noBusy) begin
-			oneWireReset <= 1;		
+			oneWireReset <= 1;
+			readState <= 0;		
 		end
 		if(startBusy) begin
 			oneWireReset <= 0;											
@@ -189,7 +194,7 @@ always @(posedge CLK_10MHZ) begin
 	end
 	
 	readScrPadCmdState: begin
-		if(noBusy) begin
+		if(noBusy) begin			
 			oneWireWrite <= 1;		
 			bufIn <= 8'hBE;
 		end
@@ -204,6 +209,7 @@ always @(posedge CLK_10MHZ) begin
 	end	
 	readScrPadDataState: begin
 		if(noBusy) begin
+			readState <= 1;
 			oneWireRead <= 1;					
 		end
 		if(startBusy) begin
@@ -242,7 +248,7 @@ always @(posedge CLK_10MHZ) begin
 			oneWireWrite <= 0;	
 		end
 		if(endBusy) begin
-			oneWireState_e <= idleState;		
+			oneWireState_e <= waitConvertOkState;		
 			//if(oneWirePinIn == 1) begin
 				//oneWireState_e <= oneWireResetState;	
 			//end
@@ -296,20 +302,37 @@ always @(posedge CLK_10MHZ) begin
 //	end
 //	
 	
-//	waitConvertOkState: begin
-//		if(noBusy) begin
-//			oneWireRead <= 1;					
-//		end
-//		if(startBusy) begin
-//			oneWireRead <= 0;	
-//	
-//		end		
-//		if(endBusy) begin
-//			if(oneWireByteBufOut) begin
-//				oneWireState_e <= readScrPadCmdState;				
-//			end				
-//		end
-//	end
+	waitConvertOkState: begin
+		if(noBusy) begin
+			oneWireRead <= 1;					
+		end
+		if(startBusy) begin
+			oneWireRead <= 0;	
+		end		
+		if(endBusy) begin
+			//if(oneWireByteBufOut) begin
+			//	oneWireState_e <= readScrPadCmdState;				
+			//end				
+			oneWireState_e <= waitConvertOkState1;	
+		end
+	end
+	
+
+	
+	readPowerSupplyState: begin
+		if(noBusy) begin
+			oneWireRead <= 1;					
+		end
+		if(startBusy) begin
+			oneWireRead <= 0;	
+		end		
+		if(endBusy) begin
+			//if(oneWireByteBufOut) begin
+			//	oneWireState_e <= readScrPadCmdState;				
+			//end				
+			oneWireState_e <= waitConvertOkState1;	
+		end
+	end	
 	
 
 

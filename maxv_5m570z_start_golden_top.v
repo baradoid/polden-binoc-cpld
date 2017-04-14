@@ -73,13 +73,14 @@ async_transmitter #(.ClkFrequency(10000000), .Baud(19200)) TXBV(.clk(CLK_SE_AR),
 
 dallas18b20Ctrl(.CLK_10MHZ(CLK_SE_AR),
 					 .start(tempMeasStart),
-					 .oneWirePinIn(BGPIO_ONEWIRE),
-					 .oneWirePinOut(oneWireOutput),
+					 .oneWirePin(BGPIO_ONEWIRE),
+					 //.oneWirePinOut(BGPIO_ONEWIRE),
 					 .temperature(oneWireTemperature),
-					 .data(data));
+					 .data(data),
+					 .readState(BGPIO[33]));
 
 wire oneWireOutput;
-OPNDRN opdn (.in(oneWireOutput), .out(BGPIO_ONEWIRE));
+//OPNDRN opdn (.in(oneWireOutput), .out(BGPIO_ONEWIRE));
 					 
 integer clockDivider = 0;
 integer clockCntStart = 0;
@@ -107,7 +108,7 @@ reg uartEna = 0;
 //reg[8*16:1] str ="abcd01234";
 
 assign BGPIO[35] = tempMeasStart;
-assign BGPIO[33] = uartStartSignal;
+//assign BGPIO[33] = uartStartSignal;
 assign BGPIO[31] = uartPrepDataSignal;
 
 reg [7:0] uartDataReg;
@@ -136,7 +137,7 @@ always @(posedge CLK_SE_AR) begin
 		start <= 1'b0;
 	end
 	
-	if(tempMeasStartCnt == 20000000) begin		
+	if(tempMeasStartCnt == 5000000) begin		
 		tempMeasStartCnt <= 0;	
 		tempMeasStart <= 1'b1;
 	end
