@@ -30,7 +30,7 @@ variable f : std_logic;
 begin
 if (clk'event and clk = '1') then
 case (state) is
-        when start => dWire <= 'Z';         -- здесь программа посто висит и ждет команд
+        when start => dWire <= '1'; --'Z';         -- здесь программа посто висит и ждет команд
                                 busy <= '0';
                                 count <= '0';
                                 if (reset = '1') then        -- пришла команда сбросить шину

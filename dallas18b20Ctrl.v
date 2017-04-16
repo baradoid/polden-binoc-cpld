@@ -4,8 +4,7 @@ input CLK_10MHZ,
 input start,
 inout oneWirePin,
 //output oneWirePinOut,
-output reg [15:0] temperature,
-output reg [23:0] data,
+output reg [8:0] temperature,
 output reg readState
 );
 reg oneWireClock=0, oneWireReset=0, oneWireRead=0, oneWireWrite=0;
@@ -16,7 +15,7 @@ wire [7:0] byteOut;
 reg [3:0] dataInd = 0;
 wire busy;
 reg busyL;
-integer oneWireDelay = 0;
+//integer oneWireDelay = 0;
 
 
 integer clockOneWireDivider = 0;
@@ -49,7 +48,7 @@ parameter readPowerSupplyState=17;
 //oneWireState_e ows = oneWireIdleState;
 reg [4:0] oneWireState_e = idleState;
 
-one_wire(
+one_wire one_wire_inst(
  .clk(oneWireClock),
  .reset(oneWireReset),
  .dWire(oneWirePin),
@@ -128,7 +127,7 @@ always @(posedge CLK_10MHZ) begin
 		end
 		if(endBusy) begin
 			oneWireState_e <= oneWireWriteSPData;
-			dataInd <= 0;
+			dataInd <= 4'd0;
 			//oneWireByteBufOut <= 8'hdd;			
 			//oneWireState_e <= oneWireIdleState;					
 		end	
@@ -145,7 +144,7 @@ always @(posedge CLK_10MHZ) begin
 		end
 		if(startBusy) begin
 			oneWireWrite <= 0;	
-			dataInd <= dataInd + 1;
+			dataInd <= dataInd + 4'd1;
 		end
 		if(endBusy) begin					
 //			if(oneWireDataCnt == 1) begin
@@ -216,24 +215,29 @@ always @(posedge CLK_10MHZ) begin
 			oneWireRead <= 0;														
 		end
 		if(endBusy) begin						
-			dataInd <= dataInd + 1;		
+			dataInd <= dataInd + 4'd1;		
 			case(dataInd) 
-				0: temperature[7:0] <= byteOut;	
-				1: temperature[15:8] <= byteOut;
+
+				//0: temperature[7:0] <= byteOut;	
+				//1: temperature[15:8] <= byteOut;
+
+				0: temperature[3:0] <= byteOut[7:4];	
+				1: temperature[7:4] <= byteOut[3:0];
+				
 				//2: temperature[7:0] <= oneWireByteBufOut; //8'hde;	
 				//3: temperature[15:8] <= oneWireByteBufOut; //8'hbc;
-				2:	data[7:0] <= byteOut; 
-				3: data[15:8] <= byteOut;
-				4: begin 
-					data[23:16] <= byteOut;				
-					oneWireState_e <= reset2ndState;						
-					end
-			   9: begin
+				//2:	data[7:0] <= byteOut; 
+				//3: data[15:8] <= byteOut;
+				//4: begin 
+					//data[23:16] <= byteOut;				
+					//oneWireState_e <= reset2ndState;						
+					//end
+			   //9: begin
 					//
 					//oneWireState_e <= idleState;						
 					//oneWireState_e <= reset2ndState;						
-					end
-				default: ;
+					//end
+				default: oneWireState_e <= reset2ndState;										
 			endcase				
 		end
 	end
@@ -248,7 +252,7 @@ always @(posedge CLK_10MHZ) begin
 			oneWireWrite <= 0;	
 		end
 		if(endBusy) begin
-			oneWireState_e <= waitConvertOkState;		
+			oneWireState_e <= idleState;		
 			//if(oneWirePinIn == 1) begin
 				//oneWireState_e <= oneWireResetState;	
 			//end

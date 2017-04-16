@@ -17,6 +17,8 @@ output   [  36: 1] 	AGPIO,
 
 // Connector B
 inout    BGPIO_ONEWIRE,
+//input    BGPIO_SPI_MISO,
+//input    BGPIO_SPI_CLK,
 output   [  35: 7] 	BGPIO,
 input 	BGPIO_P_1, BGPIO_N_1,
 input 	BGPIO_P_2, BGPIO_N_2,
@@ -59,37 +61,52 @@ input SPI_MOSI, SPI_SCK, SPI_CSN, SPI_MISO
 //);
 
 
-async_transmitter #(.ClkFrequency(10000000), .Baud(115200)) TX(.clk(CLK_SE_AR), 
+async_transmitter #(.ClkFrequency(10000000), .Baud(230400)) TX(.clk(CLK_SE_AR), 
 																					.TxD(BGPIO[34]), 
 																					.TxD_start(uartStartSignal), 
 																					.TxD_data(uartDataReg),
 																					.TxD_busy(uartBusy));
 
-async_transmitter #(.ClkFrequency(10000000), .Baud(19200)) TXBV(.clk(CLK_SE_AR), 
-																					 .TxD(BGPIO[30]), 
-																					 .TxD_start(start), 
-																					 .TxD_data(uartDataReg));
-
-
-dallas18b20Ctrl(.CLK_10MHZ(CLK_SE_AR),
+dallas18b20Ctrl dallas18b20Ctrl_inst(.CLK_10MHZ(CLK_SE_AR),
 					 .start(tempMeasStart),
 					 .oneWirePin(BGPIO_ONEWIRE),
 					 //.oneWirePinOut(BGPIO_ONEWIRE),
 					 .temperature(oneWireTemperature),
-					 .data(data),
 					 .readState(BGPIO[33]));
+
+bv_controller bv_contr_inst(.CLK_10MHZ(CLK_SE_AR),
+									 .uartRxPin(BGPIO[28]),
+									 .uartTxPin(BGPIO[26]),
+									 .billAccumed(billAccWire));
+wire [7:0] billAccWire;
+										
 
 wire oneWireOutput;
 //OPNDRN opdn (.in(oneWireOutput), .out(BGPIO_ONEWIRE));
 					 
-integer clockDivider = 0;
-integer clockCntStart = 0;
-integer tempMeasStartCnt = 0;
+reg [23:0] clockDivider = 0;
+reg [23:0] clockCntStart = 0;
+reg [23:0] tempMeasStartCnt = 0;
 
 
 wire [15:0] oneWireTemperature;
 wire [23:0] data;
 
+					 
+spi spi_AdcInst(.clk(CLK_SE_AR),
+				 .rst(1'b0),
+				 .sck(BGPIO[32]),
+				 //.mosi(BGPIO_SPI_MOSI),
+				 .start(adcStart),
+				 .miso(BGPIO[30]),				 
+				 //.data_in(spiDataIn),
+				 .data_out(spiDataOut),
+				 .new_data(spiNewData));
+				 
+reg [7:0] spiDataIn; 
+wire [7:0] spiDataOut;
+wire spiNewData;
+reg adcStart;
 
 
 reg start, startL;
@@ -115,34 +132,36 @@ reg [7:0] uartDataReg;
 //assign uartData = str[8:1];
 
 
-reg [3:0] uartState = 0;
+reg [4:0] uartState = 0;
 
 always @(posedge CLK_SE_AR) begin
 			
-	if(clockDivider == 10000000) begin
+	if(clockDivider == 24'd10000000) begin
 		clockDivider = 0;		
 		USER_LED0 = ~USER_LED0;
 		USER_LED1 = ~USER_LED1;
 	end
 	else begin
-		clockDivider = clockDivider + 1;			
+		clockDivider = clockDivider + 24'd1;			
 	end
 	
-	if(clockCntStart == 500000) begin
+	if(clockCntStart == 24'd10000) begin
 		start <= 1'b1;
+		adcStart <= 1'b1;
 		clockCntStart <= 0;	
 	end
 	else begin
-		clockCntStart <= clockCntStart + 1;			
+		clockCntStart <= clockCntStart + 24'd1;			
 		start <= 1'b0;
+		adcStart <= 1'b0;
 	end
 	
-	if(tempMeasStartCnt == 5000000) begin		
+	if(tempMeasStartCnt == 24'd5000000) begin		
 		tempMeasStartCnt <= 0;	
 		tempMeasStart <= 1'b1;
 	end
 	else begin
-		tempMeasStartCnt <= tempMeasStartCnt + 1;			
+		tempMeasStartCnt <= tempMeasStartCnt + 24'd1;			
 		tempMeasStart <= 1'b0;
 	end
 	
@@ -153,27 +172,55 @@ always @(posedge CLK_SE_AR) begin
 	
 	startL <= start;
 	if(uartPrepDataSignal) begin 
-		uartState <= uartState + 1;
+		uartState <= uartState + 5'd1;
 		case(uartState)
 			0: begin 
-				uartDataReg <= "a";	
+				uartDataReg <= "x";	
 				uartEna <= 1;
 				end
-			1: uartDataReg <= "b";
-			2: uartDataReg <= oneWireTemperature[7:0];		
-			3: uartDataReg <= oneWireTemperature[15:8];		
-			4: uartDataReg <= data[7:0];		
-			5: uartDataReg <= data[15:8];		
-			6: uartDataReg <= data[23:16];		
-			7: uartDataReg <= "\r";
-			8: uartDataReg <= "\n";	
+			1: uartDataReg <= "x";
+			2: uartDataReg <= "x";
+			3: uartDataReg <= "x";
+			4: uartDataReg <= " ";
+			
+			5: uartDataReg <= spiDataOut;  //dallas
+			6: uartDataReg <= spiDataOut;
+			7: uartDataReg <= spiDataOut;
+			8: uartDataReg <= spiDataOut;
+			9: uartDataReg <= " ";						
+			10: uartDataReg <= (oneWireTemperature[7:4]<4'hA)? (oneWireTemperature[7:4]+8'h30):(oneWireTemperature[7:4]+8'h37);
+			11: uartDataReg <= (oneWireTemperature[3:0]<4'hA)? (oneWireTemperature[3:0]+8'h30):(oneWireTemperature[3:0]+8'h37);
+			12: uartDataReg <= " ";
+			13: uartDataReg <= "x";
+			14: uartDataReg <= "x";
+			15: uartDataReg <= "x";
+			16: uartDataReg <= "x";			
+			17: uartDataReg <= " ";
+			18: uartDataReg <= "x";
+			19: uartDataReg <= "x";								
+			20: uartDataReg <= " ";
+			21: uartDataReg <= "x";
+			22: uartDataReg <= billAccWire;
+			23: uartDataReg <= billAccWire;
+			24: uartDataReg <= "x";
+				
+			
+			//4: uartDataReg <= (oneWireTemperature[11:8]<4'hA)? (oneWireTemperature[11:8]+8'h30):(oneWireTemperature[11:8]+8'h37);		
+			//5: uartDataReg <= (oneWireTemperature[15:12]<4'hA)? (oneWireTemperature[15:12]+8'h30):(oneWireTemperature[15:12]+8'h37);		
+			//6: uartDataReg <= oneWireTemperature[15:8];		
+			//7: uartDataReg <= oneWireTemperature[7:0];		
+			
+			//2: uartDataReg <= (oneWireTemperature[3:0]<4'hA)? (oneWireTemperature[3:0]+8'h30):(oneWireTemperature[3:0]+8'h37);		
+			25: uartDataReg <= "\r";
+			26: uartDataReg <= "\n";	
 			default: begin
 				uartDataReg <= 0;
 				uartEna <= 0;
 			end
 		endcase			
 	end	
- end
+	
+end
  
 
 
