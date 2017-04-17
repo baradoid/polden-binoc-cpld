@@ -74,10 +74,10 @@ dallas18b20Ctrl dallas18b20Ctrl_inst(.CLK_10MHZ(CLK_SE_AR),
 					 .temperature(oneWireTemperature),
 					 .readState(BGPIO[33]));
 
-bv_controller bv_contr_inst(.CLK_10MHZ(CLK_SE_AR),
-									 .uartRxPin(BGPIO[28]),
-									 .uartTxPin(BGPIO[26]),
-									 .billAccumed(billAccWire));
+//bv_controller bv_contr_inst(.CLK_10MHZ(CLK_SE_AR),
+//									 .uartRxPin(BGPIO[28]),
+//									 .uartTxPin(BGPIO[26]),
+//									 .billAccumed(billAccWire));
 wire [7:0] billAccWire;
 										
 
