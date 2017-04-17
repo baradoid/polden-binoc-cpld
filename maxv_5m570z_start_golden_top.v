@@ -84,7 +84,7 @@ wire [7:0] billAccWire;
 wire oneWireOutput;
 //OPNDRN opdn (.in(oneWireOutput), .out(BGPIO_ONEWIRE));
 					 
-reg [23:0] clockDivider = 0;
+//reg [23:0] clockDivider = 0;
 reg [23:0] clockCntStart = 0;
 reg [23:0] tempMeasStartCnt = 0;
 
@@ -136,14 +136,14 @@ reg [4:0] uartState = 0;
 
 always @(posedge CLK_SE_AR) begin
 			
-	if(clockDivider == 24'd10000000) begin
-		clockDivider = 0;		
-		USER_LED0 = ~USER_LED0;
-		USER_LED1 = ~USER_LED1;
-	end
-	else begin
-		clockDivider = clockDivider + 24'd1;			
-	end
+//	if(clockDivider == 24'd10000000) begin
+//		clockDivider = 0;		
+//		USER_LED0 = ~USER_LED0;
+//		USER_LED1 = ~USER_LED1;
+//	end
+//	else begin
+//		clockDivider = clockDivider + 24'd1;			
+//	end
 	
 	if(clockCntStart == 24'd10000) begin
 		start <= 1'b1;
