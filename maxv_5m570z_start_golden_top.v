@@ -74,10 +74,10 @@ dallas18b20Ctrl dallas18b20Ctrl_inst(.CLK_10MHZ(CLK_SE_AR),
 					 .temperature(oneWireTemperature),
 					 .readState(BGPIO[33]));
 
-//bv_controller bv_contr_inst(.CLK_10MHZ(CLK_SE_AR),
-//									 .uartRxPin(BGPIO[28]),
-//									 .uartTxPin(BGPIO[26]),
-//									 .billAccumed(billAccWire));
+bv_controller bv_contr_inst(.CLK_10MHZ(CLK_SE_AR),
+									 .uartRxPin(BGPIO[28]),
+									 .uartTxPin(BGPIO[26]),
+									 .billAccumed(billAccWire));
 wire [7:0] billAccWire;
 										
 
@@ -108,6 +108,28 @@ wire [7:0] spiDataOut;
 wire spiNewData;
 reg adcStart;
 
+spi spi_enc1Inst(.clk(CLK_SE_AR),
+				 .rst(1'b0),
+				 .sck(BGPIO[28]),
+				 //.mosi(BGPIO_SPI_MOSI),
+				 .start(adcStart),
+				 .miso(BGPIO[26]),				 
+				 //.data_in(spiDataIn),
+				 .data_out(enc1Pos),
+				 .new_data(enc1NewData));
+
+spi spi_enc2Inst(.clk(CLK_SE_AR),
+				 .rst(1'b0),
+				 .sck(BGPIO[25]),
+				 //.mosi(BGPIO_SPI_MOSI),
+				 .start(adcStart),
+				 .miso(BGPIO[22]),				 
+				 //.data_in(spiDataIn),
+				 .data_out(enc2Pos),
+				 .new_data(enc2NewData));
+				 
+wire [11:0] enc1Pos, enc2Pos;				 
+wire enc1NewData, enc2NewData;
 
 reg start, startL;
 reg tempMeasStart=0;
@@ -175,34 +197,33 @@ always @(posedge CLK_SE_AR) begin
 		uartState <= uartState + 5'd1;
 		case(uartState)
 			0: begin 
-				uartDataReg <= "x";	
+				uartDataReg <= "a";	
 				uartEna <= 1;
 				end
-			1: uartDataReg <= "x";
-			2: uartDataReg <= "x";
-			3: uartDataReg <= "x";
+			1: uartDataReg <= enc1Pos;
+			2: uartDataReg <= enc1Pos;
+			3: uartDataReg <= enc1Pos;
 			4: uartDataReg <= " ";
 			
-			5: uartDataReg <= spiDataOut;  //dallas
-			6: uartDataReg <= spiDataOut;
-			7: uartDataReg <= spiDataOut;
-			8: uartDataReg <= spiDataOut;
-			9: uartDataReg <= " ";						
-			10: uartDataReg <= (oneWireTemperature[7:4]<4'hA)? (oneWireTemperature[7:4]+8'h30):(oneWireTemperature[7:4]+8'h37);
-			11: uartDataReg <= (oneWireTemperature[3:0]<4'hA)? (oneWireTemperature[3:0]+8'h30):(oneWireTemperature[3:0]+8'h37);
-			12: uartDataReg <= " ";
-			13: uartDataReg <= "x";
-			14: uartDataReg <= "x";
-			15: uartDataReg <= "x";
-			16: uartDataReg <= "x";			
-			17: uartDataReg <= " ";
-			18: uartDataReg <= "x";
-			19: uartDataReg <= "x";								
-			20: uartDataReg <= " ";
-			21: uartDataReg <= "x";
+			5: uartDataReg <= enc2Pos;  //dallas
+			6: uartDataReg <= enc2Pos;
+			7: uartDataReg <= enc2Pos;			
+			8: uartDataReg <= " ";						
+			9: uartDataReg <= (oneWireTemperature[7:4]<4'hA)? (oneWireTemperature[7:4]+8'h30):(oneWireTemperature[7:4]+8'h37);
+			10: uartDataReg <= (oneWireTemperature[3:0]<4'hA)? (oneWireTemperature[3:0]+8'h30):(oneWireTemperature[3:0]+8'h37);
+			11: uartDataReg <= " ";
+			12: uartDataReg <= "e";
+			13: uartDataReg <= "f";
+			14: uartDataReg <= "g";
+			15: uartDataReg <= "h";			
+			16: uartDataReg <= " ";
+			17: uartDataReg <= "k";
+			18: uartDataReg <= "l";								
+			19: uartDataReg <= " ";
+			20: uartDataReg <= "m";
+			21: uartDataReg <= billAccWire;
 			22: uartDataReg <= billAccWire;
-			23: uartDataReg <= billAccWire;
-			24: uartDataReg <= "x";
+			23: uartDataReg <= "s";
 				
 			
 			//4: uartDataReg <= (oneWireTemperature[11:8]<4'hA)? (oneWireTemperature[11:8]+8'h30):(oneWireTemperature[11:8]+8'h37);		

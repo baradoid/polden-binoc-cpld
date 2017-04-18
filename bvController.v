@@ -9,7 +9,7 @@ module bv_controller (
 
 async_transmitter #(.ClkFrequency(10000000), .Baud(19200)) TXBV(.clk(CLK_10MHZ), 
 																					 .TxD(uartTxPin), 
-																					 .TxD_start(start), 
+																					 .TxD_start(uartStart), 
 																					 .TxD_data(uartDataReg),
 																					 .TxD_busy(txBusy));
 																					 
@@ -22,10 +22,11 @@ reg [3:0] commonStartArr [0:2];
 reg [7:0] pollReqArr [0:2];
 reg [7:0] resetReqArr [0:2];
 reg [7:0] ackArr[0:2];
-reg [7:0] writeBillTypeArr[0:11];
+reg [7:0] writeBillTypeArr[0:4];
 																					 
-reg [23:0] clockDivider = 0;
+//reg [23:0] clockDivider = 0;
 reg start;
+reg uartStart=0;
 reg [7:0] uartDataReg;
 
 wire [7:0] uartRxDataReg;
@@ -35,6 +36,7 @@ wire uartDataStartMsg = (uartDataReadyR[1:0]==2'b01);
 
 wire txBusy;
 reg [1:0] txBusyR; always @(posedge CLK_10MHZ) txBusyR <= {txBusyR[0], txBusy};
+wire uartBusyStart = (txBusyR[1:0]==2'b01);
 wire uartBusyEnd = (txBusyR[1:0]==2'b10);
 wire uartTxFree = (txBusyR[1:0]==2'b00);
 
@@ -42,12 +44,27 @@ parameter idleExchState = 0;
 parameter readState0 = idleExchState+1;
 parameter readState1 = readState0+1;
 parameter readDataState = readState1+1;
-parameter sendState = readDataState+1;
-parameter sendAckState = sendState+1; 
-parameter readBillDataState = sendAckState+1;
-parameter sendBillTypeArrState = readBillDataState+1;
-parameter sendResetArrState = sendBillTypeArrState+1;
+parameter readBillDataState = readDataState+1;
+parameter sendCommonArrState = readBillDataState+1;
+parameter sendPollState = sendCommonArrState+1;
+parameter sendAckState = sendPollState+1; 
+parameter sendResetArrState = sendAckState+1;
 
+parameter readPackedBillValue = sendResetArrState+1;
+
+parameter sendBillTypeArrState0 = readPackedBillValue+1;
+parameter sendBillTypeArrState1 = readPackedBillValue+2;
+parameter sendBillTypeArrState2 = readPackedBillValue+3;
+parameter sendBillTypeArrState3 = readPackedBillValue+4;
+parameter sendBillTypeArrState4 = readPackedBillValue+5;
+
+
+//reg [2:0] billArrState = 0;
+
+//parameter arrTypePoll=0;
+//parameter arrTypeAck=1;
+//parameter arrTypeReset=2;
+//reg [1:0] arrType;
 
 parameter unknownState = 0;
 parameter powerUpState = unknownState+1;
@@ -59,10 +76,9 @@ parameter stackingState = acceptingState+1;
 parameter rejectingState = stackingState+1;
 
 reg [3:0] bvExchState = idleExchState;
+reg [3:0] bvExchAfterSendCommonState = idleExchState;
 reg [3:0] bvState = unknownState;
-
-reg [3:0] bTrCnt = 0;
-reg [3:0] bTrInd = 0;
+reg [3:0] bTrCnt, bTrInd;
 
 initial begin
 	commonStartArr[0] = 4'h2;
@@ -81,68 +97,57 @@ initial begin
 	ackArr[1] = 8'hc2;
 	ackArr[2] = 8'h82;
 	
-	writeBillTypeArr[0] = 8'h02;
-	writeBillTypeArr[1] = 8'h03;
-	writeBillTypeArr[2] = 8'h0C;
-	writeBillTypeArr[3] = 8'h34;
-	writeBillTypeArr[4] = 8'hFF;
-	writeBillTypeArr[5] = 8'hFF;
-	writeBillTypeArr[6] = 8'hFF;
-	writeBillTypeArr[7] = 8'h00;
-	writeBillTypeArr[8] = 8'h00;
-	writeBillTypeArr[9] = 8'h00;
-	writeBillTypeArr[10] = 8'hB5;
-	writeBillTypeArr[11] = 8'hC1;
+	writeBillTypeArr[0] = 8'h0C;  //2
+	writeBillTypeArr[1] = 8'h34;
+	writeBillTypeArr[2] = 8'hB5; //5
+	writeBillTypeArr[3] = 8'hC1;
 end
 
 always @(posedge CLK_10MHZ) begin
-	if(clockDivider == 10000000) begin
-		clockDivider = 0;		
-		//start <= 1'b1;		
-	end
-	else begin
-		clockDivider = clockDivider + 24'd1;			
-		start <= 1'b0;
-	end
+//	if(clockDivider == 10000000) begin
+//		clockDivider = 0;		
+//		//start <= 1'b1;		
+//	end
+//	else begin
+//		clockDivider = clockDivider + 24'd1;			
+//		start <= 1'b0;
+//	end
 	
 	//if(uartDataStartMsg) begin
-		billAccumed <= uartRxDataReg;
+		//billAccumed <= uartRxDataReg;
 	//end
 	
 	case(bvExchState)
 	//----- idle ------
-		idleExchState: begin	
-			case(bvState) 
-				powerUpState: begin
-					bTrInd <= 0;
-					bTrCnt <= 6;
-					bvExchState <= sendResetArrState;
-				end
-				disableState: begin
-					bTrInd <= 0;
-					bTrCnt <= 12;
-					bvExchState <= sendBillTypeArrState;
-					bvState	<= unknownState;
-				end			
-				default: begin 				
-				end
-			endcase
-			if(uartDataStartMsg) begin
+		idleExchState: begin
+			if(uartTxFree) begin
+				case(bvState) 
+					powerUpState: begin
+						bvExchState <= sendCommonArrState;
+						bvExchAfterSendCommonState <= sendResetArrState;
+					end
+					disableState: begin
+						//billArrState <= 0;
+						bvExchState <= sendBillTypeArrState0;
+						bvState	<= unknownState;
+					end			
+					default: begin 				
+						bvExchState <= sendCommonArrState;
+						bvExchAfterSendCommonState <= sendPollState;
+					end
+				endcase
+			end
+			else if(uartDataStartMsg) begin
 				if(uartRxDataReg == 8'h02) begin
 					bvExchState <= readState0;													
 				end
-			end
-			else if(uartTxFree) begin
-				bTrInd <= 0;
-				bTrCnt <= 6;
-				bvExchState <= sendState;
 			end
 		end
 		
 	//----- readState0 ------
 		readState0: 
 			if(uartDataStartMsg) begin
-				if(uartRxDataReg == 8'h02)
+				if(uartRxDataReg == 8'h03)
 					bvExchState <= readState1;								
 				else 				
 					bvExchState <= idleState;						
@@ -151,8 +156,7 @@ always @(posedge CLK_10MHZ) begin
 			if(uartDataStartMsg) begin				
 				
 				bTrCnt <= uartRxDataReg;
-				bTrInd <= 0;
-				
+				bTrInd <= 0;				
 				if(uartRxDataReg == 8'h03)
 					bvExchState <= readDataState;											
 				else if(uartRxDataReg == 8'h04)
@@ -164,100 +168,258 @@ always @(posedge CLK_10MHZ) begin
 			if(uartDataStartMsg) begin	
 				bTrInd <= bTrInd + 1'b1;
 				if(bTrInd == 8'h00) begin
+					//bvState <= uartRxDataReg;
 					case(uartRxDataReg)
 						8'h10: bvState <= powerUpState;
 						8'h13: bvState <= initState;
 						8'h19: bvState <= disableState;
 						8'h14: bvState <= idleState;
 						8'h15: bvState <= acceptingState;
-						8'h17: bvState <= stackingState;
-						
+						8'h17: bvState <= stackingState;						
 					endcase				
 				end						
 			end
 			if(bTrInd == bTrCnt) begin
-				bvExchState <= sendAckState;
-				bTrInd <= 0;
-				bTrCnt <= 6;			
+				bvExchState <= sendCommonArrState;
+				bvExchAfterSendCommonState <= sendAckState;			
 			end
 		end
 
+		//----- readBillDataState ------
 		readBillDataState: begin
 			if(uartDataStartMsg) begin	
-				bTrInd <= bTrInd + 1'b1;								
-				if(bTrInd == 8'h81) begin //rubles packed
-					billAccumed <= uartRxDataReg;					
-				end						
-				else if(bTrInd == 8'h1c) begin
-					bvState <= rejectingState;
-					bvExchState <= sendAckState;   
-					bTrInd <= 0;
-					bTrCnt <= 6;					
-				end
+				bTrInd <= bTrInd + 1'b1;	
+				case(uartRxDataReg)
+					8'h81: bvExchState <= readPackedBillValue;
+					8'h1c: begin //rejectingState
+						bvExchState <= sendCommonArrState;
+						bvExchAfterSendCommonState <= sendAckState;											
+					end
+				endcase										
 			end
 			if(bTrInd == bTrCnt) begin
-				bvExchState <= sendAckState;
-				bTrInd <= 0;
-				bTrCnt <= 6;			
+				bvExchState <= sendCommonArrState;
+				bvExchAfterSendCommonState <= sendAckState;	
 			end
 		end
 		
-		sendState: begin
-			if(uartTxFree) begin
-				start	<= 1'b1;
-				uartDataReg <= pollReqArr[bTrInd];
-				bTrInd = bTrInd + 4'd1;				
-			end
-			else begin
-				start	<= 1'b0;
-			end
-			if(bTrInd == bTrCnt) begin
-				bvExchState <= idleExchState;				
+		//----- readPackedBillValue ------
+		readPackedBillValue: begin
+			if(uartDataStartMsg) begin
+				bvExchState <= idleExchState;
+				case(uartRxDataReg)
+					8'h02: billAccumed <= billAccumed + 8'd10;
+					8'h03: billAccumed <= billAccumed + 8'd50;
+					8'h04: billAccumed <= billAccumed + 8'd100;				
+				endcase				
 			end
 		end
 		
-		
-		sendAckState: begin
-				if(uartTxFree) begin
-					start	<= 1'b1;
-					uartDataReg <= ackArr[bTrInd];
-					bTrInd = bTrInd + 4'd1;				
-				end
-				else begin
-					start	<= 1'b0;
-				end
+		//----- sendBillTypeArrState ------
+		sendBillTypeArrState0: begin
+			if(uartTxFree) begin				
+				uartDataReg <= {4'h0, commonStartArr[0]};
+				bTrInd <= 4'h0;	
+				uartStart <= 1'b1;
+				bTrCnt <= 2'd3;
+			end			
+			if(uartBusyStart) begin
+				uartStart	<= 1'b0;
+				bTrInd <= bTrInd + 4'd1;				
+			end
+			if(uartBusyEnd) begin
 				if(bTrInd == bTrCnt) begin
-					bvExchState <= idleExchState;					
+					bvExchState <= sendBillTypeArrState1;				
+				end		
+				else begin
+					uartDataReg <= commonStartArr[bTrInd];
+					uartStart	<= 1'b1;			
 				end
 			end
-			
-		sendBillTypeArrState: begin
-			if(uartTxFree) begin
-				start	<= 1'b1;
-				uartDataReg <= writeBillTypeArr[bTrInd];
-				bTrInd = bTrInd + 4'd1;				
-			end
-			else begin
-				start	<= 1'b0;
-			end
-			if(bTrInd == bTrCnt) begin
-				bvExchState <= idleExchState;					
-			end		
 		end
 		
-		sendResetArrState: begin
-			if(uartTxFree) begin
-				start	<= 1'b1;
-				uartDataReg <= resetReqArr[bTrInd];
-				bTrInd = bTrInd + 4'd1;				
+		sendBillTypeArrState1: begin
+			if(uartTxFree) begin				
+				uartDataReg <= writeBillTypeArr[0];
+				bTrInd <= 4'h0;	
+				uartStart <= 1'b1;
+				bTrCnt <= 2'd3;
+			end			
+			if(uartBusyStart) begin
+				uartStart	<= 1'b0;
+				bTrInd <= bTrInd + 4'd1;				
 			end
-			else begin
-				start	<= 1'b0;
-			end
-			if(bTrInd == bTrCnt) begin
-				bvExchState <= idleExchState;				
+			if(uartBusyEnd) begin
+				if(bTrInd == bTrCnt) begin
+					bvExchState <= sendBillTypeArrState2;				
+				end		
+				else begin
+					uartDataReg <= writeBillTypeArr[bTrInd];
+					uartStart	<= 1'b1;			
+				end
 			end
 		end
+		
+		sendBillTypeArrState2: begin
+			if(uartTxFree) begin				
+				uartDataReg <= 8'hFF;
+				bTrInd <= 4'h0;	
+				uartStart <= 1'b1;
+				bTrCnt <= 4'd4;
+			end			
+			if(uartBusyStart) begin
+				uartStart	<= 1'b0;
+				bTrInd <= bTrInd + 4'd1;				
+			end
+			if(uartBusyEnd) begin
+				if(bTrInd == bTrCnt) begin
+					bvExchState <= sendBillTypeArrState3;				
+				end		
+				else begin
+					//uartDataReg <= 8'hFF;
+					uartStart	<= 1'b1;			
+				end
+			end
+		end
+		
+		sendBillTypeArrState3: begin
+			if(uartTxFree) begin				
+				uartDataReg <= 8'h00;
+				bTrInd <= 4'h0;	
+				uartStart <= 1'b1;
+				bTrCnt <= 4'd3;
+			end			
+			if(uartBusyStart) begin
+				uartStart	<= 1'b0;
+				bTrInd <= bTrInd + 4'd1;				
+			end
+			if(uartBusyEnd) begin
+				if(bTrInd == bTrCnt) begin
+					bvExchState <= sendBillTypeArrState4;				
+				end		
+				else begin
+					//uartDataReg <= 8'h00;
+					uartStart	<= 1'b1;			
+				end
+			end
+		end
+		
+		sendBillTypeArrState4: begin
+			if(uartTxFree) begin				
+				uartDataReg <= writeBillTypeArr[2];
+				bTrInd <= 4'h2;	
+				uartStart <= 1'b1;
+				bTrCnt <= 4'd4;
+			end			
+			if(uartBusyStart) begin
+				uartStart	<= 1'b0;
+				bTrInd <= bTrInd + 4'd1;				
+			end
+			if(uartBusyEnd) begin
+				if(bTrInd == bTrCnt) begin
+					bvExchState <= idleExchState;				
+				end		
+				else begin
+					uartDataReg <= writeBillTypeArr[bTrInd];
+					uartStart	<= 1'b1;			
+				end
+			end
+		end
+
+
+		
+		//----- sendCommonArrState ------
+		sendCommonArrState: begin
+			if(uartTxFree) begin				
+				uartDataReg <= {4'h0, commonStartArr[0]};
+				bTrInd <= 4'h0;	
+				uartStart <= 1'b1;
+				bTrCnt <= 4'd3;
+			end			
+			if(uartBusyStart) begin
+				uartStart	<= 1'b0;
+				bTrInd <= bTrInd + 4'd1;				
+			end
+			if(uartBusyEnd) begin
+				if(bTrInd == bTrCnt) begin
+					bvExchState <= bvExchAfterSendCommonState;				
+				end		
+				else begin
+					uartDataReg <= commonStartArr[bTrInd];
+					uartStart	<= 1'b1;			
+				end
+			end
+		end
+		
+		//----- sendResetLastArrState ------
+		sendResetArrState: begin
+			if(uartTxFree) begin				
+				uartDataReg <= resetReqArr[0];
+				bTrInd <= 4'h0;	
+				uartStart <= 1'b1;
+				bTrCnt <= 4'd3;
+			end			
+			if(uartBusyStart) begin
+				uartStart	<= 1'b0;
+				bTrInd <= bTrInd + 4'd1;				
+			end
+			if(uartBusyEnd) begin
+				if(bTrInd == bTrCnt) begin
+					bvExchState <= idleExchState;				
+				end		
+				else begin
+					uartDataReg <= resetReqArr[bTrInd];
+					uartStart	<= 1'b1;			
+				end
+			end
+		end
+		
+		//----- sendResetLastArrState ------
+		sendAckState: begin
+			if(uartTxFree) begin				
+				uartDataReg <= ackArr[0];
+				bTrInd <= 4'h0;	
+				uartStart <= 1'b1;
+				bTrCnt <= 4'd3;
+			end			
+			if(uartBusyStart) begin
+				uartStart	<= 1'b0;
+				bTrInd <= bTrInd + 4'd1;				
+			end
+			if(uartBusyEnd) begin
+				if(bTrInd == bTrCnt) begin
+					bvExchState <= idleExchState;				
+				end		
+				else begin
+					uartDataReg <= ackArr[bTrInd];
+					uartStart	<= 1'b1;			
+				end
+			end
+		end	
+
+		//----- sendPollState ------
+		sendPollState: begin
+			if(uartTxFree) begin				
+				uartDataReg <= pollReqArr[0];
+				bTrInd <= 4'h0;	
+				uartStart <= 1'b1;
+				bTrCnt <= 4'd3;
+			end			
+			if(uartBusyStart) begin
+				uartStart	<= 1'b0;
+				bTrInd <= bTrInd + 4'd1;				
+			end
+			if(uartBusyEnd) begin
+				if(bTrInd == bTrCnt) begin
+					bvExchState <= idleExchState;				
+				end		
+				else begin
+					uartDataReg <= pollReqArr[bTrInd];
+					uartStart	<= 1'b1;			
+				end
+			end
+		end	
+		
 		
 		default: ;	
 	endcase
