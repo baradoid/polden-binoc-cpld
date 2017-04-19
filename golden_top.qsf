@@ -108,10 +108,7 @@ set_location_assignment PIN_L15 -to BGPIO[28]
 set_location_assignment PIN_L14 -to BGPIO[29]
 set_location_assignment PIN_M16 -to BGPIO[30]
 set_location_assignment PIN_M15 -to BGPIO[31]
-set_location_assignment PIN_M14 -to BGPIO[32]
-set_location_assignment PIN_L13 -to BGPIO[33]
-set_location_assignment PIN_M13 -to BGPIO[34]
-set_location_assignment PIN_N14 -to BGPIO[35]
+set_location_assignment PIN_D14 -to BGPIO[33]
 set_location_assignment PIN_C14 -to BGPIO_N_1
 set_location_assignment PIN_C15 -to BGPIO_N_2
 set_location_assignment PIN_D13 -to BGPIO_N_3
@@ -166,3 +163,8 @@ set_location_assignment PIN_N13 -to BGPIO_ONEWIRE
 set_global_assignment -name VERILOG_FILE dallas18b20Ctrl.v
 set_global_assignment -name VERILOG_FILE spi.v
 set_global_assignment -name VERILOG_FILE bvController.v
+set_location_assignment PIN_M13 -to BGPIO_UART_TX
+set_location_assignment PIN_M14 -to BGPIO_UART_RX
+set_global_assignment -name MAXII_OPTIMIZATION_TECHNIQUE BALANCED
+set_global_assignment -name SYNTH_TIMING_DRIVEN_SYNTHESIS OFF
+set_global_assignment -name OPTIMIZE_POWER_DURING_SYNTHESIS "NORMAL COMPILATION"

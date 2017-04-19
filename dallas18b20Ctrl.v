@@ -12,7 +12,7 @@ reg oneWireClock=0, oneWireReset=0, oneWireRead=0, oneWireWrite=0;
 
 reg[7:0] bufIn;
 wire [7:0] byteOut;
-reg [3:0] dataInd = 0;
+reg [2:0] dataInd = 0;
 wire busy;
 reg busyL;
 //integer oneWireDelay = 0;
@@ -233,7 +233,7 @@ always @(posedge CLK_10MHZ) begin
 			oneWireRead <= 0;														
 		end
 		if(endBusy) begin						
-			dataInd <= dataInd + 4'd1;		
+			dataInd <= dataInd + 3'd1;		
 			case(dataInd) 
 
 				//0: temperature[7:0] <= byteOut;	
