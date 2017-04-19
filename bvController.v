@@ -21,7 +21,7 @@ async_receiver #(.ClkFrequency(10000000), .Baud(19200)) RXBV(.clk(CLK_10MHZ),
 reg [8:0] addr;																					 
 wire data_valid;
 wire [7:0] dataout;
-altufm_altufm_parallel_srk (.addr(addr), .data_valid(data_valid), .dataout(dataout))	;																				 
+altufm (.addr(addr), .data_valid(data_valid), .dataout(dataout))	;																				 
 
 reg [3:0] commonStartArr [0:2];
 reg [7:0] pollReqArr [0:2];
