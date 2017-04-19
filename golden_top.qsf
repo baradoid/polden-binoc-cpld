@@ -168,3 +168,4 @@ set_location_assignment PIN_M14 -to BGPIO_UART_RX
 set_global_assignment -name MAXII_OPTIMIZATION_TECHNIQUE BALANCED
 set_global_assignment -name SYNTH_TIMING_DRIVEN_SYNTHESIS OFF
 set_global_assignment -name OPTIMIZE_POWER_DURING_SYNTHESIS "NORMAL COMPILATION"
+set_global_assignment -name QIP_FILE altufm.qip
