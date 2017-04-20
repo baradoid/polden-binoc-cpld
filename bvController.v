@@ -136,13 +136,13 @@ always @(posedge CLK_10MHZ) begin
 						arrInd <= 4'h0;
 						bvExchState <= sendArrState; //sendBill
 					end			
-//					rejectingState: begin
-//						ufmAddr <= ackArrAddr;
-//						arrLen <=  ackArrLen;
-//						ufmnRead <= 1'b0;
-//						arrInd <= 4'h0;
-//						bvExchState <= sendArrState; //sendBill
-//					end
+					rejectingState: begin
+						ufmAddr <= ackArrAddr;
+						arrLen <=  ackArrLen;
+						ufmnRead <= 1'b0;
+						arrInd <= 4'h0;
+						bvExchState <= sendArrState; //sendBill
+					end
 					default: begin 				
 						ufmAddr <= pollReqArrAddr;
 						arrLen <=  pollReqArrLen;
@@ -189,9 +189,9 @@ always @(posedge CLK_10MHZ) begin
 						8'h10: bvState <= powerUpState;
 						8'h13: bvState <= initState;
 						8'h19: bvState <= disableState;
-						//8'h14: bvState <= idleState;
-						//8'h15: bvState <= acceptingState;
-						//8'h17: bvState <= stackingState;						
+						8'h14: bvState <= idleState;
+						8'h15: bvState <= acceptingState;
+						8'h17: bvState <= stackingState;						
 					endcase				
 				end						
 			end
