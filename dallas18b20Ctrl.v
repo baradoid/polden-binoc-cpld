@@ -1,11 +1,11 @@
  
  module dallas18b20Ctrl(
 input CLK_10MHZ,
-input start,
+//input start,
 inout oneWirePin,
 //output oneWirePinOut,
-output reg [8:0] temperature,
-output reg readState
+output reg [7:0] temperature/*,
+output reg readState*/
 );
 reg oneWireClock=0, oneWireReset=0, oneWireRead=0, oneWireWrite=0;
 
@@ -88,14 +88,14 @@ always @(posedge CLK_10MHZ) begin
 	
 	case(oneWireState_e)
 	idleState: begin
-			if(start) begin			
+			//if(start) begin			
 				oneWireState_e <= oneWireResetState;
-				readState <= 0;
-			end		
-			else begin
+				//readState <= 0;
+			//end		
+			//else begin
 				//oneWirePinOut <= 1;
 				
-			end
+			//end
 			
 		end
 	oneWireResetState: begin
@@ -182,7 +182,7 @@ always @(posedge CLK_10MHZ) begin
 	reset2ndState: begin
 		if(noBusy) begin
 			oneWireReset <= 1;
-			readState <= 0;		
+			//readState <= 0;		
 		end
 		if(startBusy) begin
 			oneWireReset <= 0;											
@@ -226,7 +226,7 @@ always @(posedge CLK_10MHZ) begin
 	end	
 	readScrPadDataState: begin
 		if(noBusy) begin
-			readState <= 1;
+			//readState <= 1;
 			oneWireRead <= 1;					
 		end
 		if(startBusy) begin
