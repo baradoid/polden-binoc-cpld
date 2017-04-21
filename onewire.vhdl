@@ -6,6 +6,7 @@ entity one_wire is
         port ( reset : in std_logic;
                         read_byte : in std_logic;
                         write_byte : in std_logic;
+								--read_bit : in std_logic;
                         dWire : inout std_logic;
                         --wire_in : in std_logic;
                         presense : out std_logic;
@@ -27,6 +28,8 @@ variable state : finit_state := start;
 
 variable n_bit : integer range 0 to 7;
 variable f : std_logic;
+--variable oneBit : std_logic;
+
 begin
 if (clk'event and clk = '1') then
 case (state) is
@@ -39,12 +42,19 @@ case (state) is
                                         state := delay_reset;   -- переходим туда, где эта шина сбрасывается
                                 elsif (write_byte = '1') then 
                                         f := '0';
+													 --oneBit := '0';
                                         busy <= '1';
                                         state := wire_0;
                                 elsif (read_byte = '1') then
                                         f := '1';
+													 --oneBit := '0';
                                         busy <= '1';
                                         state := wire_0;
+										--  elsif (read_bit = '1') then
+										--			 f := '1';
+										--			 oneBit := '1';
+										--			 busy <= '1';
+										--			 state := wire_0;
                                 end if;
                                         
         when delay_reset => dWire <= '0';     -- сбрасываем шину, т. е. выставляем 0 и ждем 480 мкс
@@ -90,7 +100,11 @@ case (state) is
                                 if (counter = 8) then     -- задержка перед приемом или передачей следующего бита
                                         count <= '0';
                                         dWire <= '1';
-                                        if (n_bit = 7) then    -- если все биты приняты/переданы возвращаемся на начало
+												--	 if (oneBit = '1') then    -- читаем только один бит
+                                    --            n_bit := 0;
+                                    --            state := start;													 
+                                    --    elsif (n_bit = 7) then    -- если все биты приняты/переданы возвращаемся на начало
+													 if (n_bit = 7) then    -- если все биты приняты/переданы возвращаемся на начало
                                                 n_bit := 0;
                                                 state := start;
                                         else n_bit := n_bit + 1;

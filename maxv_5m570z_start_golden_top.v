@@ -7,6 +7,8 @@
  
 input   CLK_SE_AR,
 
+output reg SYNCHRO,
+
 // GPIO
 input USER_PB0, USER_PB1,
 input CAP_PB_1,
@@ -65,14 +67,18 @@ input SPI_MOSI, SPI_SCK, SPI_CSN, SPI_MISO
 //BaudTickGen #(.ClkFrequency(10000000), .Baud(230400)) tickgen(.clk(CLK_SE_AR), .enable(uartBusy), .tick(uartTick1));
 
 reg [31:0] timerCounter; always @(posedge CLK_SE_AR) timerCounter <= timerCounter + 31'h1;
+wire dataSendAllow = ((timerCounter[9:0] == 10'h3ff));
 assign BGPIO[30] = timerCounter[31];
 
+
+
 wire uartBusy;
-reg [7:0] uartBusyR; always @(posedge CLK_SE_AR) uartBusyR[7:0] <= {uartBusyR[6:0], uartBusy};
+//reg [15:0] uartBusyR; always @(posedge CLK_SE_AR) uartBusyR[7:0] <= {uartBusyR[14:0], uartBusy};
 reg uartEna = 0;
 reg uartStartSignal = 0;
+wire uartStartSignalWire = uartStartSignal && uartEna;
 //wire uartPrepDataSignal = ((uartBusy==0)&&(uartBusyR==1));
-wire uartTxFree = (uartTxFree==8'h0);
+//wire uartTxFree = (uartBusyR==8'h0);
 
 
 reg [7:0] uartDataReg;
@@ -80,7 +86,7 @@ reg [7:0] uartDataReg;
 async_transmitter #(.ClkFrequency(10000000), .Baud(230400)) TX(.clk(CLK_SE_AR),
 																					//.BitTick(uartTick1),
 																					.TxD(BGPIO_UART_TX), 
-																					.TxD_start(uartStartSignal), 
+																					.TxD_start(uartStartSignalWire), 
 																					.TxD_data(uartDataReg),
 																					.TxD_busy(uartBusy));
 
@@ -93,12 +99,19 @@ async_receiver #(.ClkFrequency(10000000), .Baud(230400)) RX(.clk(CLK_SE_AR),
 																					.RxD_data_ready(uartRxDataReady), 
 																					.RxD_data(uartRxData));
 																					
+wire dallasPresense;		
+wire clock_6mks = (timerCounter[5:2] == 4'hf);
+reg last23BitState; always @(posedge CLK_SE_AR) last23BitState <= timerCounter[22];
+wire dallasStart = ((timerCounter[22]==1'b0) && (last23BitState==1'b1));
 dallas18b20Ctrl dallas18b20Ctrl_inst(.CLK_10MHZ(CLK_SE_AR),
-					 //.start(tempMeasStart),
+					  .CLK_6MKS(clock_6mks),
+					 .start(dallasStart),
 					 .oneWirePin(BGPIO_ONEWIRE),
 					 //.oneWirePinOut(BGPIO_ONEWIRE),
-					 .temperature(oneWireTemperature)/*,
-					 .readState(BGPIO[33])*/);
+					 .temperature(oneWireTemperature),
+					 .presenseOut(dallasPresense),
+					 .startExch(synchroWire));
+wire synchroWire;
 
 bv_controller bv_contr_inst(.CLK_10MHZ(CLK_SE_AR),
 									 .uartRxPin(BGPIO[28]),
@@ -129,6 +142,13 @@ always @(posedge CLK_SE_AR) begin
 	spi1BusyR <= spi1Busy;
 	spi2BusyR <= spi2Busy;
 	spiAdcBusyR <= spiAdcBusy;
+	
+	USER_LED0 <= dallasPresense;
+	USER_LED1 <= dallasPresense;
+	
+	//SYNCHRO <= synchroWire;
+	SYNCHRO <= dallasStart;
+
 end
 
 wire spi1Start = ((spi1Busy==1'b0)&&(spi1BusyR==1'b0));
@@ -168,20 +188,22 @@ spi spi_AdcInst(.clk(CLK_SE_AR),
 
 wire [7:0] adcData;
 wire spiNewData;
-				 
+
 wire [11:0] enc1Pos, enc2Pos;				 
 wire enc1NewData, enc2NewData;
+reg  [11:0]	enc1PosLast, enc2PosLast;				 
 
 reg [7:0] dataIn;
 wire newDataWire;
 wire [7:0] spiDataWire;
 
-
-
 reg [3:0] transDataIn;
 wire [7:0] transDataOut = (transDataIn[3:0]<4'hA)? (transDataIn[3:0]+8'h30):(transDataIn[3:0]+8'h37);
 
-reg [4:0] uartState = 0;
+//reg [4:0] uartState = 0;
+wire [4:0] uartState = timerCounter[14:10];
+
+reg regsChanged = 0;
 
 always @(posedge CLK_SE_AR) begin
 			
@@ -219,47 +241,46 @@ always @(posedge CLK_SE_AR) begin
 		dataIn <= spiDataWire;	
 	end
 	
-	if(uartTxFree) begin 
-		uartState <= uartState + 5'd1;
+
+	if(dataSendAllow) begin
+		//SYNCHRO <= 1;	
+		//uartState <= uartState + 5'd1;			
 		uartStartSignal <= 1'b1;				
-		case(uartState)
-			0: begin 				
-				uartEna <= 1;
+		case(uartState)			
+			0: begin 															
 				transDataIn <= enc1Pos[11:8];
-				//uartDataReg <= " ";
-				uartDataReg <= "A";
-				
 				end
-			1: begin 
+			1: begin 				
+				uartEna <= 1;
 				transDataIn <= enc1Pos[7:4]; 
-				//uartDataReg <= transDataOut;
-				uartDataReg <= "B";					
+				uartDataReg <= transDataOut;
+				//uartDataReg <= "B";					
 				end 
 			2: begin 
 				transDataIn <= enc1Pos[3:0];
-				//uartDataReg <= transDataOut;
-				uartDataReg <= "C";				
+				uartDataReg <= transDataOut;
+				//uartDataReg <= "C";				
 				end
 			3: begin
-				//uartDataReg <= transDataOut;
-				uartDataReg <= "D";				
+				uartDataReg <= transDataOut;
+				//uartDataReg <= "D";				
 				end
 			4: begin
 				transDataIn <= enc2Pos[11:8];
-				//uartDataReg <= " ";
-				uartDataReg <= "E";				
+				uartDataReg <= " ";
+				//uartDataReg <= "E";				
 				end			
 			5: begin
 				transDataIn <= enc2Pos[7:4]; 
-				//uartDataReg <= transDataOut;
-				uartDataReg <= "F";				
+				uartDataReg <= transDataOut;
+				//uartDataReg <= "F";				
 				end
 			6: begin
 				transDataIn <= enc2Pos[3:0];				
 				uartDataReg <= transDataOut;  //dallas			
 				end
 			7: begin 
-				uartDataReg <= enc2Pos[3:0];						
+				uartDataReg <= transDataOut;						
 				end
 			8: begin 
 				uartDataReg <= " ";						
@@ -275,48 +296,52 @@ always @(posedge CLK_SE_AR) begin
 				end
 			11: begin
 				uartDataReg <= " ";			
+				transDataIn <= billAccWire[7:4];				 
 				end
 			12: begin
-				uartDataReg <= " ";			
-				end
-			
-			13: begin 				 				 
-				 uartDataReg <= " ";			
-				 end
-			14: begin 
-				 transDataIn <= billAccWire[7:4];				 
-				 uartDataReg <= transDataOut;			
-				 end
-			15: begin
 				 transDataIn <= billAccWire[3:0];				 
 				 uartDataReg <= transDataOut;			
-				 end
-			16: begin
+				end
+			
+			13: begin 				 				 				 
 				 uartDataReg <= transDataOut;			
-				 end				 								
-			17: begin 
-				 uartDataReg <= "\r";			
-				 end
-			18: begin 
-				 uartDataReg <= "\n";				
+				end
+			14: begin 				 
+				uartDataReg <= "\r";
+
+				end
+			15: begin
+				uartDataReg <= "\n";				
+				regsChanged <= 0;
 				 end
 			default: begin
 				uartDataReg <= 0;
 				uartEna <= 0;
 			end
-		endcase			
-	end
-	else begin
+		endcase	
+	end		
+	else begin 			
 		uartStartSignal <= 1'b0;
+		//SYNCHRO <= 0;
 	end
 	
 	
 	
 	if(uartRxDataReady) begin		
-		USER_LED0 <= ~USER_LED0;		
-		USER_LED1 <= ~USER_LED1;	
+		//USER_LED0 <= ~USER_LED0;		
+		//USER_LED1 <= ~USER_LED1;	
 		//uartDataReg1 <= uartRxData;
 	end
+	
+	if(enc1PosLast != enc1Pos) begin
+		enc1PosLast <= enc1Pos;
+		regsChanged <= 1;
+	end
+	if(enc2PosLast != enc2Pos) begin
+		enc2PosLast <= enc2Pos;
+		regsChanged <= 1;
+	end
+	
 end
  
 

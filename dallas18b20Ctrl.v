@@ -1,14 +1,17 @@
  
  module dallas18b20Ctrl(
 input CLK_10MHZ,
-//input start,
+input CLK_6MKS,
+input start,
 inout oneWirePin,
 //output oneWirePinOut,
-output reg [7:0] temperature/*,
-output reg readState*/
+output reg [7:0] temperature,
+output reg presenseOut = 0,
+output reg startExch
 );
-reg oneWireClock=0, oneWireReset=0, oneWireRead=0, oneWireWrite=0;
-
+reg oneWireReset=0, oneWireRead=0, oneWireWrite=0, oneWireRead_bit=0;
+//reg oneWireClock=0;
+wire oneWireClock = CLK_6MKS;
 
 reg[7:0] bufIn;
 wire [7:0] byteOut;
@@ -18,7 +21,7 @@ reg busyL;
 //integer oneWireDelay = 0;
 
 
-reg [5:0] clockOneWireDivider = 0;
+//reg [5:0] clockOneWireDivider = 0;
 
 wire noBusy = (busy==0)&&(busyL==0);
 wire startBusy = (busy==1)&&(busyL==0);
@@ -41,6 +44,7 @@ parameter readScrPadDataState=4;
 parameter reset2ndState=5;
 parameter skipRomCmd2ndState=6;
 parameter convertCmdState=7;
+//parameter waitConvertOkState=8;
 
 //parameter oneWireWriteSPCmd=7;
 //parameter oneWireWriteSPData=8;
@@ -67,7 +71,8 @@ one_wire one_wire_inst(
  .out_byte(byteOut[7:0]),
  .read_byte(oneWireRead),
  .write_byte(oneWireWrite),
- .busy(busy),
+ //.read_bit(oneWireRead_bit),
+ .busy(busy), 
  .presense(presense)
 );
 
@@ -75,23 +80,24 @@ wire presense;
 
 always @(posedge CLK_10MHZ) begin
 		
-	if(clockOneWireDivider == 6'd59) begin
-		clockOneWireDivider <= 6'd0;	
-		oneWireClock <= 1'b1;
-	end
-	else begin
-		clockOneWireDivider <= clockOneWireDivider + 6'd1;					
-		oneWireClock <= 1'b0;
-	end
+//	if(clockOneWireDivider == 6'd59) begin
+//		clockOneWireDivider <= 6'd0;	
+//		oneWireClock <= 1'b1;
+//	end
+//	else begin
+//		clockOneWireDivider <= clockOneWireDivider + 6'd1;					
+//		oneWireClock <= 1'b0;
+//	end
 	
 	busyL <= busy;
 	
 	case(oneWireState_e)
 	idleState: begin
-			//if(start) begin			
+			if(start) begin			
 				oneWireState_e <= oneWireResetState;
+				startExch <= 1;
 				//readState <= 0;
-			//end		
+			end		
 			//else begin
 				//oneWirePinOut <= 1;
 				
@@ -99,6 +105,7 @@ always @(posedge CLK_10MHZ) begin
 			
 		end
 	oneWireResetState: begin
+			startExch <= 0;
 			if(noBusy) begin
 				oneWireReset <= 1;		
 			end
@@ -107,10 +114,13 @@ always @(posedge CLK_10MHZ) begin
 			end
 			if(endBusy) begin
 				
-				if(presense)
+				presenseOut <= presense;
+				if(presense) begin 
 					oneWireState_e <= oneWireSkipRomCmd;	
-				else
+				end 
+				else begin 
 					oneWireState_e <= idleState;	
+				end 
 				
 				
 				//oneWireState_e <= oneWireIdleState;					
@@ -271,11 +281,31 @@ always @(posedge CLK_10MHZ) begin
 		end
 		if(endBusy) begin
 			oneWireState_e <= idleState;		
+			//oneWireState_e <= waitConvertOkState;
 			//if(oneWirePinIn == 1) begin
 				//oneWireState_e <= oneWireResetState;	
 			//end
 		end
 	end
+	
+//	waitConvertOkState: begin
+//		if(noBusy) begin
+//			oneWireRead_bit <= 1;					
+//		end
+//		if(startBusy) begin
+//			oneWireRead_bit <= 0;	
+//		end		
+//		if(endBusy) begin
+//			if(byteOut[0] == 1'b1) 						
+//				oneWireState_e <= idleState;	
+//			
+//			//if(oneWireByteBufOut) begin
+//			//	oneWireState_e <= readScrPadCmdState;				
+//			//end				
+//			
+//		end
+//	end
+
 	
 //	reset3ndState: begin
 //		if(noBusy) begin
@@ -323,21 +353,6 @@ always @(posedge CLK_10MHZ) begin
 //		end
 //	end
 //	
-	
-//	waitConvertOkState: begin
-//		if(noBusy) begin
-//			oneWireRead <= 1;					
-//		end
-//		if(startBusy) begin
-//			oneWireRead <= 0;	
-//		end		
-//		if(endBusy) begin
-//			//if(oneWireByteBufOut) begin
-//			//	oneWireState_e <= readScrPadCmdState;				
-//			//end				
-//			oneWireState_e <= waitConvertOkState1;	
-//		end
-//	end
 	
 
 	
