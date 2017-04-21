@@ -64,12 +64,15 @@ input SPI_MOSI, SPI_SCK, SPI_CSN, SPI_MISO
 //wire uartTick1;
 //BaudTickGen #(.ClkFrequency(10000000), .Baud(230400)) tickgen(.clk(CLK_SE_AR), .enable(uartBusy), .tick(uartTick1));
 
+reg [31:0] timerCounter; always @(posedge CLK_SE_AR) timerCounter <= timerCounter + 31'h1;
+assign BGPIO[30] = timerCounter[31];
+
 wire uartBusy;
-reg uartBusyR; always @(posedge CLK_SE_AR) uartBusyR <= uartBusy;
+reg [7:0] uartBusyR; always @(posedge CLK_SE_AR) uartBusyR[7:0] <= {uartBusyR[6:0], uartBusy};
 reg uartEna = 0;
 reg uartStartSignal = 0;
-wire uartPrepDataSignal = ((uartBusy==0)&&(uartBusyR==1));
-wire uartTxFree = ((uartBusy==0)&&(uartBusyR==0));
+//wire uartPrepDataSignal = ((uartBusy==0)&&(uartBusyR==1));
+wire uartTxFree = (uartTxFree==8'h0);
 
 
 reg [7:0] uartDataReg;
@@ -216,7 +219,7 @@ always @(posedge CLK_SE_AR) begin
 		dataIn <= spiDataWire;	
 	end
 	
-	if(uartBusy==1'b0) begin 
+	if(uartTxFree) begin 
 		uartState <= uartState + 5'd1;
 		uartStartSignal <= 1'b1;				
 		case(uartState)
