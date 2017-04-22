@@ -66,8 +66,11 @@ input SPI_MOSI, SPI_SCK, SPI_CSN, SPI_MISO
 //wire uartTick1;
 //BaudTickGen #(.ClkFrequency(10000000), .Baud(230400)) tickgen(.clk(CLK_SE_AR), .enable(uartBusy), .tick(uartTick1));
 
+wire tempDataChanged = (oneWireTemperatureL[7:0] != oneWireTemperature[7:0]);
+
 reg [31:0] timerCounter; always @(posedge CLK_SE_AR) timerCounter <= timerCounter + 31'h1;
-wire dataSendAllow = ((timerCounter[9:0] == 10'h3ff));
+wire dataSendAllow = ((timerCounter[9:0] == 10'h3ff) && tempDataChanged);
+
 assign BGPIO[30] = timerCounter[31];
 
 
@@ -79,8 +82,6 @@ reg uartStartSignal = 0;
 wire uartStartSignalWire = uartStartSignal && uartEna;
 //wire uartPrepDataSignal = ((uartBusy==0)&&(uartBusyR==1));
 //wire uartTxFree = (uartBusyR==8'h0);
-
-
 reg [7:0] uartDataReg;
 
 async_transmitter #(.ClkFrequency(10000000), .Baud(230400)) TX(.clk(CLK_SE_AR),
@@ -103,6 +104,10 @@ wire dallasPresense;
 wire clock_6mks = (timerCounter[5:2] == 4'hf);
 reg last23BitState; always @(posedge CLK_SE_AR) last23BitState <= timerCounter[22];
 wire dallasStart = ((timerCounter[22]==1'b0) && (last23BitState==1'b1));
+wire [7:0] oneWireTemperature;
+reg [7:0] oneWireTemperatureL; 
+wire synchroWire;
+
 dallas18b20Ctrl dallas18b20Ctrl_inst(.CLK_10MHZ(CLK_SE_AR),
 					  .CLK_6MKS(clock_6mks),
 					 .start(dallasStart),
@@ -111,27 +116,13 @@ dallas18b20Ctrl dallas18b20Ctrl_inst(.CLK_10MHZ(CLK_SE_AR),
 					 .temperature(oneWireTemperature),
 					 .presenseOut(dallasPresense),
 					 .startExch(synchroWire));
-wire synchroWire;
 
+wire [7:0] billAccWire;
 bv_controller bv_contr_inst(.CLK_10MHZ(CLK_SE_AR),
 									 .uartRxPin(BGPIO[28]),
 									 .uartTxPin(BGPIO[26]),
 									 .billAccumed(billAccWire));
-wire [7:0] billAccWire;
 										
-
-wire oneWireOutput;
-//OPNDRN opdn (.in(oneWireOutput), .out(BGPIO_ONEWIRE));
-					 
-//reg [23:0] clockDivider = 0;
-//reg [23:0] clockCntStart = 0;
-//reg [23:0] tempMeasStartCnt = 0;
-
-
-wire [7:0] oneWireTemperature;
-wire [23:0] data;
-
-					 
 
 
 //reg adcStart;
@@ -143,8 +134,8 @@ always @(posedge CLK_SE_AR) begin
 	spi2BusyR <= spi2Busy;
 	spiAdcBusyR <= spiAdcBusy;
 	
-	USER_LED0 <= dallasPresense;
-	USER_LED1 <= dallasPresense;
+	USER_LED0 <= ~dallasPresense;
+	USER_LED1 <= ~tempDataChanged;
 	
 	//SYNCHRO <= synchroWire;
 	SYNCHRO <= dallasStart;
@@ -235,8 +226,8 @@ always @(posedge CLK_SE_AR) begin
 //		tempMeasStartCnt <= tempMeasStartCnt + 24'd1;			
 //		tempMeasStart <= 1'b0;
 //	end
-	
-	
+
+
 	if(newDataWire) begin
 		dataIn <= spiDataWire;	
 	end
@@ -245,9 +236,11 @@ always @(posedge CLK_SE_AR) begin
 	if(dataSendAllow) begin
 		//SYNCHRO <= 1;	
 		//uartState <= uartState + 5'd1;			
+		
 		uartStartSignal <= 1'b1;				
 		case(uartState)			
-			0: begin 															
+			0: begin
+				//
 				transDataIn <= enc1Pos[11:8];
 				end
 			1: begin 				
@@ -313,10 +306,12 @@ always @(posedge CLK_SE_AR) begin
 			15: begin
 				uartDataReg <= "\n";				
 				regsChanged <= 0;
+				oneWireTemperatureL[7:0] <= oneWireTemperature[7:0];
 				 end
 			default: begin
 				uartDataReg <= 0;
 				uartEna <= 0;
+				//oneWireTemperatureL <= oneWireTemperature;
 			end
 		endcase	
 	end		

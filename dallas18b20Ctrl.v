@@ -18,6 +18,7 @@ wire [7:0] byteOut;
 reg [2:0] dataInd = 0;
 wire busy;
 reg busyL;
+reg noDeviceStart = 0;
 //integer oneWireDelay = 0;
 
 
@@ -93,9 +94,10 @@ always @(posedge CLK_10MHZ) begin
 	
 	case(oneWireState_e)
 	idleState: begin
-			if(start) begin			
+			if(start || (noDeviceStart==1'b1)) begin			
 				oneWireState_e <= oneWireResetState;
 				startExch <= 1;
+				noDeviceStart <= 0;
 				//readState <= 0;
 			end		
 			//else begin
@@ -119,7 +121,9 @@ always @(posedge CLK_10MHZ) begin
 					oneWireState_e <= oneWireSkipRomCmd;	
 				end 
 				else begin 
-					oneWireState_e <= idleState;	
+					oneWireState_e <= idleState;
+					noDeviceStart <= 1;	
+					temperature <= 8'h80; //-128°
 				end 
 				
 				
