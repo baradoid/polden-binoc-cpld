@@ -1,8 +1,11 @@
 module bv_controller (
     input CLK_10MHZ,	
 	 input uartRxPin,
+	 input uartStartSignal,
 	 output uartTxPin,
-    output reg[ 7:0] billAccumed = 8'h0
+    output reg[ 7:0] billAccumed = 8'h0,
+	 output ufmDataValid,
+	 output reg ufmnRead = 1'b1
   );
   
   
@@ -11,24 +14,33 @@ async_transmitter #(.ClkFrequency(10000000), .Baud(19200)) TXBV(.clk(CLK_10MHZ),
 																					 .TxD(uartTxPin), 
 																					 .TxD_start(uartStart), 
 																					 .TxD_data(uartDataReg),
-																					 .TxD_busy(txBusy));
+																					 .TxD_busy(uartTxBusy));
 																					 
 async_receiver #(.ClkFrequency(10000000), .Baud(19200)) RXBV(.clk(CLK_10MHZ), 
 																					 .RxD(uartRxPin), 
-																					 .RxD_data_ready(uartDataReady), 
+																					 .RxD_data_ready(uartRxDataReady), 
 																					 .RxD_data(uartRxDataReg));
 						
-reg ufmnRead = 1'b1;
+		
 reg [8:0] ufmAddr;
 reg [3:0] arrLen;
 reg [3:0] arrInd;
-reg dataValidR;  always @(posedge CLK_10MHZ) dataValidR <= data_valid;
-wire data_valid;
-wire [7:0] dataout;
-wire dataValidWire = data_valid && !dataValidR;
+reg dataValidR;  always @(posedge CLK_10MHZ) dataValidR <= ufmDataValid;
+wire ufmDataValidPE = ufmDataValid && ~dataValidR;
+wire ufmDataValidNE = ~ufmDataValid && dataValidR;
+//wire ufmDataValid;
+wire [15:0] dataout;
 
-altufm ufm(.addr(ufmAddr), .nread(ufmnRead), .data_valid(data_valid), .dataout(dataout))	;																				 
 
+reg [15:0] ufmnReadR; 
+//reg ufmnRead = 1'b1; 
+
+
+altufm ufm(.addr(ufmAddr), 
+			  .nread(ufmnRead), 
+			  .data_valid(ufmDataValid), 
+			  .dataout(dataout));	
+			  
 //reg [3:0] commonStartArr [0:2];
 //reg [7:0] pollReqArr [0:2];
 //reg [7:0] resetReqArr [0:2];
@@ -41,15 +53,15 @@ reg uartStart=0;
 reg [7:0] uartDataReg;
 
 wire [7:0] uartRxDataReg;
-wire uartDataReady;
-reg [1:0] uartDataReadyR; always @(posedge CLK_10MHZ) uartDataReadyR <= {uartDataReadyR[0], uartDataReady};
-wire uartDataStartMsg = (uartDataReadyR[1:0]==2'b01);
+wire uartRxDataReady;
+reg uartRxDataReadyR; always @(posedge CLK_10MHZ) uartRxDataReadyR <= uartRxDataReady;
+wire uartRxDataStartMsg = ((uartRxDataReady==1'b1)&&(uartRxDataReadyR==1'b0));
 
-wire txBusy;
-reg [1:0] txBusyR; always @(posedge CLK_10MHZ) txBusyR <= {txBusyR[0], txBusy};
-wire uartBusyStart = (txBusyR[1:0]==2'b01);
-wire uartBusyEnd = (txBusyR[1:0]==2'b10);
-wire uartTxFree = (txBusyR[1:0]==2'b00);
+wire uartTxBusy;
+reg uartTxBusyR; always @(posedge CLK_10MHZ) uartTxBusyR <= uartTxBusy;
+wire uartTxBusyPE = uartTxBusy && ~uartTxBusyR;
+wire uartTxBusyNE = ~uartTxBusy && uartTxBusyR;
+wire uartTxFree = ~uartTxBusy && ~uartTxBusyR;
 
 parameter idleExchState = 0;
 parameter readState0 = idleExchState+1;
@@ -71,7 +83,7 @@ parameter stackingState = acceptingState+1;
 parameter rejectingState = stackingState+1;
 
 parameter pollReqArrAddr = 8'h00;
-parameter pollReqArrLen = 8'd6;
+parameter pollReqArrLen = 4'd6;
 
 parameter resetArrAddr = 8'h08;
 parameter resetArrLen = 8'd6;
@@ -112,15 +124,16 @@ reg [3:0] bvState = unknownState;
 //end
 
 always @(posedge CLK_10MHZ) begin
-
-	//if(uartDataStartMsg) begin
-		//billAccumed <= uartRxDataReg;
-	//end
 	
 	case(bvExchState)
 	//----- idle ------
 		idleExchState: begin
-			if(uartTxFree) begin
+			if(uartRxDataStartMsg) begin
+				if(uartRxDataReg == 8'h02) begin
+					bvExchState <= readState0;													
+				end
+			end
+			else begin
 				case(bvState) 
 					powerUpState: begin
 						ufmAddr <= resetArrAddr;
@@ -147,29 +160,23 @@ always @(posedge CLK_10MHZ) begin
 						ufmAddr <= pollReqArrAddr;
 						arrLen <=  pollReqArrLen;
 						ufmnRead <= 1'b0;
-						arrInd <= 4'h0;
+						arrInd <= 4'h1;
 						bvExchState <= sendArrState;   //sendPoll
 					end
-					
 				endcase
-			end
-			else if(uartDataStartMsg) begin
-				if(uartRxDataReg == 8'h02) begin
-					bvExchState <= readState0;													
-				end
 			end
 		end
 		
 	//----- readState0 ------
 		readState0: 
-			if(uartDataStartMsg) begin
+			if(uartRxDataStartMsg) begin
 				if(uartRxDataReg == 8'h03)
 					bvExchState <= readState1;								
 				else 				
 					bvExchState <= idleState;						
 			end
 		readState1: 
-			if(uartDataStartMsg) begin				
+			if(uartRxDataStartMsg) begin				
 				
 				arrLen <= uartRxDataReg;
 				arrInd <= 0;				
@@ -181,7 +188,7 @@ always @(posedge CLK_10MHZ) begin
 			end
 
 		readDataState: begin
-			if(uartDataStartMsg) begin	
+			if(uartRxDataStartMsg) begin	
 				arrInd <= arrInd + 1'b1;
 				if(arrInd == 8'h00) begin
 					//bvState <= uartRxDataReg;
@@ -202,7 +209,7 @@ always @(posedge CLK_10MHZ) begin
 
 		//----- readBillDataState ------
 		readBillDataState: begin
-			if(uartDataStartMsg) begin	
+			if(uartRxDataStartMsg) begin	
 				arrInd <= arrInd + 1'b1;	
 				case(uartRxDataReg)
 					8'h81: bvExchState <= readPackedBillValue;
@@ -220,7 +227,7 @@ always @(posedge CLK_10MHZ) begin
 		
 		//----- readPackedBillValue ------
 		readPackedBillValue: begin
-			if(uartDataStartMsg) begin
+			if(uartRxDataStartMsg) begin
 				bvExchState <= idleExchState;
 				case(uartRxDataReg)
 					8'h02: billAccumed <= billAccumed + 8'd10;
@@ -232,33 +239,26 @@ always @(posedge CLK_10MHZ) begin
 		end
 		
 		//----- sendArrState ------
-		sendArrState: begin 		
-			if( uartTxFree && dataValidWire ) begin								
-				uartDataReg <= dataout;				
+		sendArrState: begin 				
+			if(uartTxFree && ufmDataValid && uartStartSignal) begin			
 				uartStart <= 1'b1;				
-			end			
-			if(uartBusyStart) begin
-				uartStart <= 1'b0;
+				uartDataReg[7:0] <= dataout[15:8];													
+				
+				ufmAddr <= ufmAddr + 8'd1;
+				ufmnRead <= 1'b0;				
 				arrInd <= arrInd + 4'd1;				
+				if(arrInd[3:0] == arrLen[3:0]) begin
+					bvExchState <= idleExchState;	
+				end				
 			end
-			if(uartBusyEnd) begin
-				if(arrInd == arrLen) begin
-					bvExchState <= idleExchState;				
-				end		
-				else begin					
-					uartDataReg <= dataout;
-					uartStart	<= 1'b1;			
-				end
-			end
-		end
-			
-
-		
-
-		
-		default: ;	
+		end		
 	endcase
 
+	if(ufmDataValidNE)
+		ufmnRead <= 1'b1;	
+	if(uartTxBusyPE)
+		uartStart <= 1'b0;	
+		
 	
 end
 

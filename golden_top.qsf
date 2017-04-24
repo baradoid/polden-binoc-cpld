@@ -101,8 +101,6 @@ set_location_assignment PIN_J16 -to BGPIO[21]
 set_location_assignment PIN_J15 -to BGPIO[22]
 set_location_assignment PIN_J14 -to BGPIO[23]
 set_location_assignment PIN_K16 -to BGPIO[24]
-set_location_assignment PIN_K15 -to BGPIO[25]
-set_location_assignment PIN_K14 -to BGPIO[26]
 set_location_assignment PIN_L16 -to BGPIO[27]
 set_location_assignment PIN_L15 -to BGPIO[28]
 set_location_assignment PIN_L14 -to BGPIO[29]
@@ -172,3 +170,5 @@ set_global_assignment -name QIP_FILE altufm.qip
 set_global_assignment -name HEX_FILE ufm_init.hex
 set_global_assignment -name ENABLE_DRC_SETTINGS ON
 set_location_assignment PIN_N14 -to SYNCHRO
+set_location_assignment PIN_K14 -to BV_UART_TX
+set_location_assignment PIN_K15 -to BV_UART_RX

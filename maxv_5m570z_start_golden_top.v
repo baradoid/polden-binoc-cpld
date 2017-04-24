@@ -7,7 +7,7 @@
  
 input   CLK_SE_AR,
 
-output reg SYNCHRO,
+output SYNCHRO,
 
 // GPIO
 input USER_PB0, USER_PB1,
@@ -23,6 +23,8 @@ inout    BGPIO_ONEWIRE,
 //input    BGPIO_SPI_CLK,
 input 	BGPIO_UART_RX,
 output 	BGPIO_UART_TX,
+input 	BV_UART_RX,  //BILL_VALIDATOR
+output 	BV_UART_TX,	 //BILL_VALIDATOR
 output   [ 30: 7] 	BGPIO,
 input 	BGPIO_P_1, BGPIO_N_1,
 input 	BGPIO_P_2, BGPIO_N_2,
@@ -80,9 +82,18 @@ wire uartBusy;
 reg uartEna = 0;
 reg uartStartSignal = 0;
 wire uartStartSignalWire = uartStartSignal && uartEna;
+
+//reg last12BitState; always @(posedge CLK_SE_AR) last12BitState <= timerCounter[12];
+//wire uart19200StartSignal = ((timerCounter[12]==0) && (last12BitState==1));
+wire uart19200StartSignal = (timerCounter[12:0] == 13'h1FFF);
+
+assign SYNCHRO = uart19200StartSignal;
+
 //wire uartPrepDataSignal = ((uartBusy==0)&&(uartBusyR==1));
 //wire uartTxFree = (uartBusyR==8'h0);
 reg [7:0] uartDataReg;
+
+assign BGPIO[22] = uart19200StartSignal;
 
 async_transmitter #(.ClkFrequency(10000000), .Baud(230400)) TX(.clk(CLK_SE_AR),
 																					//.BitTick(uartTick1),
@@ -119,9 +130,12 @@ dallas18b20Ctrl dallas18b20Ctrl_inst(.CLK_10MHZ(CLK_SE_AR),
 
 wire [7:0] billAccWire;
 bv_controller bv_contr_inst(.CLK_10MHZ(CLK_SE_AR),
-									 .uartRxPin(BGPIO[28]),
-									 .uartTxPin(BGPIO[26]),
-									 .billAccumed(billAccWire));
+									 .uartRxPin(BV_UART_RX),
+									 .uartTxPin(BV_UART_TX),
+									 .uartStartSignal(uart19200StartSignal),
+									 .billAccumed(billAccWire),
+									 .ufmDataValid(BGPIO[12]),
+									 .ufmnRead(BGPIO[10]));
 										
 
 
@@ -138,7 +152,7 @@ always @(posedge CLK_SE_AR) begin
 	USER_LED1 <= ~tempDataChanged;
 	
 	//SYNCHRO <= synchroWire;
-	SYNCHRO <= dallasStart;
+	//SYNCHRO <= dallasStart;
 
 end
 
@@ -276,34 +290,44 @@ always @(posedge CLK_SE_AR) begin
 				uartDataReg <= transDataOut;						
 				end
 			8: begin 
-				uartDataReg <= " ";						
-				transDataIn <= oneWireTemperature[7:4];
-				
+				transDataIn <= 4'hb;				
+				uartDataReg <= " ";										
 				end
-			9: begin
+			9:	begin 
+				transDataIn <= 4'hc;				
+				uartDataReg <= transDataOut;										
+				end				
+			10:	begin 				
+				uartDataReg <= transDataOut;										
+				end				
+			11:begin				
+				transDataIn <= oneWireTemperature[7:4];				
+				uartDataReg <= " ";										
+				end
+			12: begin
 				transDataIn <= oneWireTemperature[3:0];
 				uartDataReg <= transDataOut;			
 				end
-			10: begin				
+			13: begin				
 				uartDataReg <= transDataOut;				
 				end
-			11: begin
+			14: begin
 				uartDataReg <= " ";			
 				transDataIn <= billAccWire[7:4];				 
 				end
-			12: begin
+			15: begin
 				 transDataIn <= billAccWire[3:0];				 
 				 uartDataReg <= transDataOut;			
 				end
 			
-			13: begin 				 				 				 
+			16: begin 				 				 				 
 				 uartDataReg <= transDataOut;			
 				end
-			14: begin 				 
+			17: begin 				 
 				uartDataReg <= "\r";
 
 				end
-			15: begin
+			18: begin
 				uartDataReg <= "\n";				
 				regsChanged <= 0;
 				oneWireTemperatureL[7:0] <= oneWireTemperature[7:0];
