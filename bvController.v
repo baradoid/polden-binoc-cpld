@@ -25,6 +25,10 @@ async_receiver #(.ClkFrequency(10000000), .Baud(19200)) RXBV(.clk(CLK_10MHZ),
 reg [8:0] ufmAddr;
 reg [3:0] arrLen;
 reg [3:0] arrInd;
+
+reg [3:0] readArrInd;
+reg [3:0] readArrLen;
+
 reg dataValidR;  always @(posedge CLK_10MHZ) dataValidR <= ufmDataValid;
 wire ufmDataValidPE = ufmDataValid && ~dataValidR;
 wire ufmDataValidNE = ~ufmDataValid && dataValidR;
@@ -75,33 +79,33 @@ parameter delayExchState = 	2;
 
 
 
-
-parameter powerUpBVState =   0;	//8'h10: bvState <= powerUpState;
+parameter powerUpBVState =   5'h10;	//8'h10: bvState <= powerUpState
 parameter unknownBVState =   1;
 parameter needAckBVState =   2;	
-parameter initBVState = 	  3;	//8'h13: bvState <= initState;
-parameter idleBVState = 	  4;	//8'h14: bvState <= idleState;											
-parameter acceptingBVState = 5;	//8'h15: bvState <= acceptingState;
-parameter stackingBVState =  7;	//8'h17: bvState <= stackingState;						
-parameter rejectingBVState = 8;	//8'h18
-parameter disableBVState =   9;	//8'h19: bvState <= disableState;
+parameter initBVState = 	  8'h13;	//8'h13: bvState <= initState
+parameter idleBVState = 	  8'h14;	//8'h14: bvState <= idleState										
+parameter acceptingBVState = 8'h15; //8'h15: bvState <= acceptingState
+parameter stackingBVState =  8'h17; //8'h17: bvState <= stackingState
+parameter rejectingBVState = 8'h18;	//8'h18
+parameter disableBVState =   8'h19;	//8'h19: bvState <= disableState
+parameter stackedBVState =   8'h81; //8'h17: bvState <= stackingState
 			
 						
 parameter pollReqArrAddr = 8'h00;
 parameter pollReqArrLen = 4'd6;
 
 parameter resetArrAddr = 8'h08;
-parameter resetArrLen = 8'd6;
+parameter resetArrLen = 4'd6;
 
 parameter ackArrAddr = 8'h10;
-parameter ackArrLen = 8'd6;
+parameter ackArrLen = 4'd6;
 
 parameter writeBillTypeArrAddr = 8'h18;
 parameter writeBillTypeArrLen = 8'd12;
 
 reg [1:0] bvExchWriteState = idleExchState;
 reg [2:0] bvExchReadState = idleExchState;
-reg [3:0] bvState = unknownBVState;
+reg [7:0] bvState = unknownBVState;
 
 
 
@@ -135,7 +139,7 @@ always @(posedge CLK_10MHZ) begin
 		idleExchState: begin
 			if(uartRxDataReadyPE) begin
 				if(uartRxDataReg == 8'h02) begin
-					bvExchReadState <= readExchState0;													
+					bvExchReadState <= readExchState0;
 				end
 			end
 		end
@@ -151,32 +155,36 @@ always @(posedge CLK_10MHZ) begin
 		readExchState1: 
 			if(uartRxDataReadyPE) begin				
 				
-				arrLen <= uartRxDataReg;
-				arrInd <= 0;				
-				if(uartRxDataReg == 8'h03)
+				readArrLen <= uartRxDataReg-3;
+				readArrInd <= 0;				
+				if(uartRxDataReg == 8'h06)
 					bvExchReadState <= readDataExchState;											
-				else if(uartRxDataReg == 8'h04)
+				else if(uartRxDataReg == 8'h07)
 					bvExchReadState <= readBillDataExchState;
 				
 			end
 
 		readDataExchState: begin
 			if(uartRxDataReadyPE) begin	
-				arrInd <= arrInd + 1'b1;
-				if(arrInd == 8'h00) begin
-					bvState <= uartRxDataReg;
-//					case(uartRxDataReg)
+				readArrInd <= readArrInd + 1'b1;
+				if(readArrInd == 8'h00) begin
+					bvState[7:0] <= uartRxDataReg[7:0];
+
+					//case(uartRxDataReg)
 //						8'h10: bvState <= powerUpState;
 //						8'h13: bvState <= initState;
 //						8'h14: bvState <= idleState;											
 //						8'h15: bvState <= acceptingState;
 //						8'h17: bvState <= stackingState;						
-//						8'h19: bvState <= disableState;
-//					endcase				
+//						8'h19: bvState <= disableState;						
+					//rejectingBVState: bvState <= needAckBVState;
+					//stackingBVState:	bvState <= needAckBVState;
+					//stackedBVState:	bvState <= needAckBVState;						
+					//endcase				
 				end						
 			end
-			if(arrInd == arrLen) begin
-				bvState <= needAckBVState;	//sendAckState
+			if(readArrInd == readArrLen) begin
+				//bvState <= needAckBVState;	//sendAckState
 				bvExchReadState <= idleExchState;
 			end
 		end
@@ -210,7 +218,8 @@ always @(posedge CLK_10MHZ) begin
 					8'h04: billAccumed <= billAccumed + 8'd100;		
 					default: ;
 				endcase				
-			end
+				bvState <= needAckBVState;
+			end		
 		end		
 	endcase
 	
@@ -221,40 +230,35 @@ always @(posedge CLK_10MHZ) begin
 	//----- idle ------
 		idleExchState: begin
 			begin
+				arrInd <= 4'h1;
+				ufmnRead <= 1'b0;	
+				bvExchWriteState <= sendArrExchState;  
 				case(bvState) 
 					powerUpBVState: begin
 						ufmAddr <= resetArrAddr;
-						arrLen <=  resetArrLen;
-						ufmnRead <= 1'b0;
-						arrInd <= 4'h0;
-						bvExchWriteState <= sendArrExchState;  //sendReset
+						arrLen <=  resetArrLen;				//sendReset												
 					end
-
+					
 					disableBVState: begin
 						ufmAddr <= writeBillTypeArrAddr;
-						arrLen <=  writeBillTypeArrLen;
-						ufmnRead <= 1'b0;
-						arrInd <= 4'h0;
-						bvExchWriteState <= sendArrExchState; //sendBill
+						arrLen <=  writeBillTypeArrLen;		 //sendBill														
 					end			
-					
-					needAckBVState:
-					rejectingState: begin
+									
+					//rejectingBVState:
+					//stackingBVState:	
+					//stackedBVState:
+					needAckBVState:					
+					begin
 						ufmAddr <= ackArrAddr;
-						arrLen <=  ackArrLen;
-						ufmnRead <= 1'b0;
-						arrInd <= 4'h0;
-						bvExchWriteState <= sendArrExchState; //sendBill
+						arrLen <=  ackArrLen;				//sendAck						
 					end
 					
 					default: begin 				
 						ufmAddr <= pollReqArrAddr;
-						arrLen <=  pollReqArrLen;
-						ufmnRead <= 1'b0;
-						arrInd <= 4'h1;
-						bvExchWriteState <= sendArrExchState;   //sendPoll
+						arrLen <=  pollReqArrLen;			//sendPoll						
 					end
 				endcase
+				
 			end
 		end
 		
@@ -271,6 +275,8 @@ always @(posedge CLK_10MHZ) begin
 				if(arrInd[3:0] == arrLen[3:0]) begin
 					bvExchWriteState <= delayExchState;	
 					arrInd[3:0] <= 4'hf;
+					arrLen[3:0] <= 4'hf;
+					bvState <= unknownBVState;
 				end				
 			end
 		end	
@@ -283,9 +289,10 @@ always @(posedge CLK_10MHZ) begin
 			if(arrInd[3:0] == 4'h0) begin
 				arrLen[3:0] <= arrLen[3:0] - 1;
 				arrInd[3:0]	<= 4'hf;		
+				//bvExchWriteState <= idleExchState;	
 			end
 			if(arrLen[3:0] == 4'h0) begin
-				bvExchWriteState <= idleExchState;	
+				bvExchWriteState <= idleExchState;					
 			end			
 		end
 	endcase

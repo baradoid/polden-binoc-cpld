@@ -69,12 +69,14 @@ input SPI_MOSI, SPI_SCK, SPI_CSN, SPI_MISO
 //BaudTickGen #(.ClkFrequency(10000000), .Baud(230400)) tickgen(.clk(CLK_SE_AR), .enable(uartBusy), .tick(uartTick1));
 
 wire tempDataChanged = (oneWireTemperatureL[7:0] != oneWireTemperature[7:0]);
-
+wire billDataChanged = (billAcc[7:0] != billAccWire[7:0]);
 reg [31:0] timerCounter; always @(posedge CLK_SE_AR) timerCounter <= timerCounter + 31'h1;
-wire dataSendAllow = ((timerCounter[9:0] == 10'h3ff) && tempDataChanged);
+wire dataSendAllow = ((timerCounter[9:0] == 10'h3ff) && (tempDataChanged || billDataChanged));
 
 assign BGPIO[30] = timerCounter[31];
 
+assign BGPIO[24] = BV_UART_RX;
+assign BGPIO[23] = BV_UART_TX;
 
 
 wire uartBusy;
@@ -129,6 +131,7 @@ dallas18b20Ctrl dallas18b20Ctrl_inst(.CLK_10MHZ(CLK_SE_AR),
 					 .startExch(synchroWire));
 
 wire [7:0] billAccWire;
+reg [7:0] billAcc;
 bv_controller bv_contr_inst(.CLK_10MHZ(CLK_SE_AR),
 									 .uartRxPin(BV_UART_RX),
 									 .uartTxPin(BV_UART_TX),
@@ -162,30 +165,30 @@ wire spiAdcStart = ((spiAdcBusy==1'b0)&&(spiAdcBusyR==1'b0));
 
 spi spi_enc1Inst(.clk(CLK_SE_AR),
 				 .rst(1'b0),
-				 .sck(BGPIO[28]),
+				 .sck(BGPIO[20]),
 				 //.mosi(BGPIO_SPI_MOSI),
 				 .start(spi1Start),
-				 .miso(BGPIO[26]),				 
+				 .miso(BGPIO[21]),				 
 				 //.data_in(spiDataIn),
 				 .data_out(enc1Pos),
 				 .new_data(enc1NewData));
 
 spi spi_enc2Inst(.clk(CLK_SE_AR),
 				 .rst(1'b0),
-				 .sck(BGPIO[25]),
+				 .sck(BGPIO[16]),
 				 //.mosi(BGPIO_SPI_MOSI),
 				 .start(spi2Start),
-				 .miso(BGPIO[22]),				 
+				 .miso(BGPIO[17]),				 
 				 //.data_in(spiDataIn),
 				 .data_out(enc2Pos),
 				 .new_data(enc2NewData));
 
 spi spi_AdcInst(.clk(CLK_SE_AR),
 				 .rst(1'b0),
-				 .sck(BGPIO[24]),
+				 .sck(BGPIO[18]),
 				 //.mosi(BGPIO_SPI_MOSI),
 				 .start(spiAdcStart),
-				 .miso(BGPIO[20]),				 
+				 .miso(BGPIO[19]),				 
 				 //.data_in(spiDataIn),
 				 .data_out(adcData),
 				 .new_data(spiNewData));
@@ -321,7 +324,8 @@ always @(posedge CLK_SE_AR) begin
 				end
 			
 			16: begin 				 				 				 
-				 uartDataReg <= transDataOut;			
+				 uartDataReg <= transDataOut;
+				 billAcc[7:0] <= billAccWire[7:0];
 				end
 			17: begin 				 
 				uartDataReg <= "\r";
