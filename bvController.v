@@ -55,7 +55,7 @@ reg [7:0] uartDataReg;
 wire [7:0] uartRxDataReg;
 wire uartRxDataReady;
 reg uartRxDataReadyR; always @(posedge CLK_10MHZ) uartRxDataReadyR <= uartRxDataReady;
-wire uartRxDataStartMsg = ((uartRxDataReady==1'b1)&&(uartRxDataReadyR==1'b0));
+wire uartRxDataReadyPE = ((uartRxDataReady==1'b1)&&(uartRxDataReadyR==1'b0));
 
 wire uartTxBusy;
 reg uartTxBusyR; always @(posedge CLK_10MHZ) uartTxBusyR <= uartTxBusy;
@@ -63,25 +63,30 @@ wire uartTxBusyPE = uartTxBusy && ~uartTxBusyR;
 wire uartTxBusyNE = ~uartTxBusy && uartTxBusyR;
 wire uartTxFree = ~uartTxBusy && ~uartTxBusyR;
 
-parameter idleExchState = 0;
-parameter readState0 = idleExchState+1;
-parameter readState1 = readState0+1;
-parameter readDataState = readState1+1;
-parameter readBillDataState = readDataState+1;
-parameter readPackedBillValue = readBillDataState+1;
-parameter sendArrState = readPackedBillValue+1;
+parameter idleExchState =  				  0;
+parameter readExchState0 = 				  1;
+parameter readExchState1 = 				  2;
+parameter readDataExchState = 			  3;
+parameter readBillDataExchState = 		  4;
+parameter readPackedBillValueExchState = 5;
+
+parameter sendArrExchState =  1;
+parameter delayExchState = 	2;
 
 
 
-parameter unknownState = 0;
-parameter powerUpState = unknownState+1;
-parameter idleState = powerUpState+1;
-parameter initState = idleState+1;
-parameter disableState = initState+1;
-parameter acceptingState = disableState+1;
-parameter stackingState = acceptingState+1;
-parameter rejectingState = stackingState+1;
 
+parameter powerUpBVState =   0;	//8'h10: bvState <= powerUpState;
+parameter unknownBVState =   1;
+parameter needAckBVState =   2;	
+parameter initBVState = 	  3;	//8'h13: bvState <= initState;
+parameter idleBVState = 	  4;	//8'h14: bvState <= idleState;											
+parameter acceptingBVState = 5;	//8'h15: bvState <= acceptingState;
+parameter stackingBVState =  7;	//8'h17: bvState <= stackingState;						
+parameter rejectingBVState = 8;	//8'h18
+parameter disableBVState =   9;	//8'h19: bvState <= disableState;
+			
+						
 parameter pollReqArrAddr = 8'h00;
 parameter pollReqArrLen = 4'd6;
 
@@ -94,8 +99,9 @@ parameter ackArrLen = 8'd6;
 parameter writeBillTypeArrAddr = 8'h18;
 parameter writeBillTypeArrLen = 8'd12;
 
-reg [2:0] bvExchState = idleExchState;
-reg [3:0] bvState = unknownState;
+reg [1:0] bvExchWriteState = idleExchState;
+reg [2:0] bvExchReadState = idleExchState;
+reg [3:0] bvState = unknownBVState;
 
 
 
@@ -125,110 +131,79 @@ reg [3:0] bvState = unknownState;
 
 always @(posedge CLK_10MHZ) begin
 	
-	case(bvExchState)
-	//----- idle ------
+	case(bvExchReadState)
 		idleExchState: begin
-			if(uartRxDataStartMsg) begin
+			if(uartRxDataReadyPE) begin
 				if(uartRxDataReg == 8'h02) begin
-					bvExchState <= readState0;													
+					bvExchReadState <= readExchState0;													
 				end
 			end
-			else begin
-				case(bvState) 
-					powerUpState: begin
-						ufmAddr <= resetArrAddr;
-						arrLen <=  resetArrLen;
-						ufmnRead <= 1'b0;
-						arrInd <= 4'h0;
-						bvExchState <= sendArrState;  //sendReset
-					end
-					disableState: begin
-						ufmAddr <= writeBillTypeArrAddr;
-						arrLen <=  writeBillTypeArrLen;
-						ufmnRead <= 1'b0;
-						arrInd <= 4'h0;
-						bvExchState <= sendArrState; //sendBill
-					end			
-					rejectingState: begin
-						ufmAddr <= ackArrAddr;
-						arrLen <=  ackArrLen;
-						ufmnRead <= 1'b0;
-						arrInd <= 4'h0;
-						bvExchState <= sendArrState; //sendBill
-					end
-					default: begin 				
-						ufmAddr <= pollReqArrAddr;
-						arrLen <=  pollReqArrLen;
-						ufmnRead <= 1'b0;
-						arrInd <= 4'h1;
-						bvExchState <= sendArrState;   //sendPoll
-					end
-				endcase
-			end
 		end
-		
+
 	//----- readState0 ------
-		readState0: 
-			if(uartRxDataStartMsg) begin
+		readExchState0: 
+			if(uartRxDataReadyPE) begin
 				if(uartRxDataReg == 8'h03)
-					bvExchState <= readState1;								
+					bvExchReadState <= readExchState1;								
 				else 				
-					bvExchState <= idleState;						
+					bvExchReadState <= idleBVState;						
 			end
-		readState1: 
-			if(uartRxDataStartMsg) begin				
+		readExchState1: 
+			if(uartRxDataReadyPE) begin				
 				
 				arrLen <= uartRxDataReg;
 				arrInd <= 0;				
 				if(uartRxDataReg == 8'h03)
-					bvExchState <= readDataState;											
+					bvExchReadState <= readDataExchState;											
 				else if(uartRxDataReg == 8'h04)
-					bvExchState <= readBillDataState;
+					bvExchReadState <= readBillDataExchState;
 				
 			end
 
-		readDataState: begin
-			if(uartRxDataStartMsg) begin	
+		readDataExchState: begin
+			if(uartRxDataReadyPE) begin	
 				arrInd <= arrInd + 1'b1;
 				if(arrInd == 8'h00) begin
-					//bvState <= uartRxDataReg;
-					case(uartRxDataReg)
-						8'h10: bvState <= powerUpState;
-						8'h13: bvState <= initState;
-						8'h19: bvState <= disableState;
-						8'h14: bvState <= idleState;
-						8'h15: bvState <= acceptingState;
-						8'h17: bvState <= stackingState;						
-					endcase				
+					bvState <= uartRxDataReg;
+//					case(uartRxDataReg)
+//						8'h10: bvState <= powerUpState;
+//						8'h13: bvState <= initState;
+//						8'h14: bvState <= idleState;											
+//						8'h15: bvState <= acceptingState;
+//						8'h17: bvState <= stackingState;						
+//						8'h19: bvState <= disableState;
+//					endcase				
 				end						
 			end
 			if(arrInd == arrLen) begin
-				bvExchState <= sendArrState;	//sendAckState
+				bvState <= needAckBVState;	//sendAckState
+				bvExchReadState <= idleExchState;
 			end
 		end
 
 		//----- readBillDataState ------
-		readBillDataState: begin
-			if(uartRxDataStartMsg) begin	
+		readBillDataExchState: begin
+			if(uartRxDataReadyPE) begin	
 				arrInd <= arrInd + 1'b1;	
 				case(uartRxDataReg)
-					8'h81: bvExchState <= readPackedBillValue;
+					8'h81: bvExchReadState <= readPackedBillValueExchState;
 					8'h1c: begin //rejectingState
-						bvExchState <= idleExchState;		
-						bvState <= rejectingState;			
+						bvExchReadState <= idleExchState;		
+						bvState <= rejectingBVState;			
 						//bvExchState <= sendArrState;		//sendAckState								
 					end
 				endcase										
 			end
 			if(arrInd == arrLen) begin
-				bvExchState <= sendArrState; //sendAck
+				bvState <= needAckBVState; //sendAck
+				bvExchReadState <= idleExchState;
 			end
 		end
 		
 		//----- readPackedBillValue ------
-		readPackedBillValue: begin
-			if(uartRxDataStartMsg) begin
-				bvExchState <= idleExchState;
+		readPackedBillValueExchState: begin
+			if(uartRxDataReadyPE) begin
+				bvExchReadState <= idleExchState;
 				case(uartRxDataReg)
 					8'h02: billAccumed <= billAccumed + 8'd10;
 					8'h03: billAccumed <= billAccumed + 8'd50;
@@ -236,10 +211,56 @@ always @(posedge CLK_10MHZ) begin
 					default: ;
 				endcase				
 			end
+		end		
+	endcase
+	
+	//----- ---- ------
+	//----- ---- ------
+	
+	case(bvExchWriteState)
+	//----- idle ------
+		idleExchState: begin
+			begin
+				case(bvState) 
+					powerUpBVState: begin
+						ufmAddr <= resetArrAddr;
+						arrLen <=  resetArrLen;
+						ufmnRead <= 1'b0;
+						arrInd <= 4'h0;
+						bvExchWriteState <= sendArrExchState;  //sendReset
+					end
+
+					disableBVState: begin
+						ufmAddr <= writeBillTypeArrAddr;
+						arrLen <=  writeBillTypeArrLen;
+						ufmnRead <= 1'b0;
+						arrInd <= 4'h0;
+						bvExchWriteState <= sendArrExchState; //sendBill
+					end			
+					
+					needAckBVState:
+					rejectingState: begin
+						ufmAddr <= ackArrAddr;
+						arrLen <=  ackArrLen;
+						ufmnRead <= 1'b0;
+						arrInd <= 4'h0;
+						bvExchWriteState <= sendArrExchState; //sendBill
+					end
+					
+					default: begin 				
+						ufmAddr <= pollReqArrAddr;
+						arrLen <=  pollReqArrLen;
+						ufmnRead <= 1'b0;
+						arrInd <= 4'h1;
+						bvExchWriteState <= sendArrExchState;   //sendPoll
+					end
+				endcase
+			end
 		end
 		
+		
 		//----- sendArrState ------
-		sendArrState: begin 				
+		sendArrExchState: begin 				
 			if(uartTxFree && ufmDataValid && uartStartSignal) begin			
 				uartStart <= 1'b1;				
 				uartDataReg[7:0] <= dataout[15:8];													
@@ -248,10 +269,25 @@ always @(posedge CLK_10MHZ) begin
 				ufmnRead <= 1'b0;				
 				arrInd <= arrInd + 4'd1;				
 				if(arrInd[3:0] == arrLen[3:0]) begin
-					bvExchState <= idleExchState;	
+					bvExchWriteState <= delayExchState;	
+					arrInd[3:0] <= 4'hf;
 				end				
 			end
-		end		
+		end	
+		
+		//----- delay state ------
+		delayExchState: begin
+			if(uartStartSignal) begin
+				arrInd[3:0] <= arrInd[3:0] - 1;
+			end			
+			if(arrInd[3:0] == 4'h0) begin
+				arrLen[3:0] <= arrLen[3:0] - 1;
+				arrInd[3:0]	<= 4'hf;		
+			end
+			if(arrLen[3:0] == 4'h0) begin
+				bvExchWriteState <= idleExchState;	
+			end			
+		end
 	endcase
 
 	if(ufmDataValidNE)
