@@ -54,36 +54,17 @@ input I2C_PROM_SCL, I2C_PROM_SDA,
 input SPI_MOSI, SPI_SCK, SPI_CSN, SPI_MISO 
  );  
  
-// reg [7:0] outByte;
- 
- //assign USER_LED0 = outByte[0];
-// assign USER_LED1 = outByte[1];
- 
-
-//spi(	
-//	.clk(CLK_SE_AR),
-//	.rst(1'b0),
-//	.miso(AGPIO[3]),
-//	//.mosi(AGPIO[4]),
-//	.sck(BGPIO[35]),
-//	.start(start),
-//	.data_in(data),
-//	.data_out(spiDataWire),
-//	.new_data(newDataWire)	
-//);
-//wire uartTick1;
-//BaudTickGen #(.ClkFrequency(10000000), .Baud(230400)) tickgen(.clk(CLK_SE_AR), .enable(uartBusy), .tick(uartTick1));
-
 wire tempDataChanged = (oneWireTemperatureL[7:0] != oneWireTemperature[7:0]);
 wire billDataChanged = (billAcc[7:0] != billAccWire[7:0]);
-wire enc1PosChanged = (enc1Pos[11:0] != enc1PosLast[11:0]);
-wire enc2PosChanged = (enc2Pos[11:0] != enc2PosLast[11:0]);
-wire adcDataChanged = (adcData[7:0] != adcDataL[7:0]);
+wire enc1PosChanged = (enc1PosLast[12:0] != enc1Pos[12:0]);
+wire enc2PosChanged = (enc2PosLast[12:0] != enc2Pos[12:0]);
+wire adcDataChanged = (adcDataL[7:0] != adcData[7:0]);
 
 reg [31:0] timerCounter; always @(posedge CLK_SE_AR) timerCounter <= timerCounter + 31'h1;
 wire dataSendAllow = ((timerCounter[9:0] == 10'h3ff) && (tempDataChanged || billDataChanged || enc1PosChanged || enc2PosChanged || adcDataChanged));
 
-wire encAdcSpiExchStart =  (timerCounter[10:0] == 10'hfff); //каждые 400 мкс
+wire encAdcSpiExchStart =  (timerCounter[11:0] == 12'hfff); //каждые 400 мкс
+wire encSpiHalfClock = (timerCounter[5:0] == 6'h3f); //каждые 6 мкс
 
 //assign BGPIO[30] = timerCounter[31];
 
@@ -112,7 +93,7 @@ reg [7:0] uartDataReg;
 async_transmitter #(.ClkFrequency(10000000), .Baud(230400)) TX(.clk(CLK_SE_AR),
 																					//.BitTick(uartTick1),
 																					.TxD(BGPIO_UART_TX), 
-																					.TxD_start(uartStartSignalWire), 
+																					.TxD_start(uartStartSignal), 
 																					.TxD_data(uartDataReg),
 																					.TxD_busy(uartBusy));
 
@@ -175,47 +156,19 @@ wire [7:0] adcData;
 reg [7:0] adcDataL;
 wire spiNewData;
 
-wire [11:0] enc1Pos, enc2Pos;				 
+wire [12:0] enc1Pos, enc2Pos;				 
 wire enc1NewData, enc2NewData;
-reg  [11:0]	enc1PosLast, enc2PosLast;		
+reg  [12:0]	enc1PosLast, enc2PosLast;
 
-
-spi #(.CLK_DIV(8)) spi_enc1Inst(.clk(CLK_SE_AR),
-				 .rst(1'b0),
-				 .sck(ENC1_SCK),
-				 //.mosi(BGPIO_SPI_MOSI),
-				 .start(encAdcSpiExchStart),
-				 .miso(ENC1_MISO),				 
-				 //.data_in(spiDataIn),
-				 .data_out(enc1Pos),
-				 .new_data(enc1NewData));
-
-spi #(.CLK_DIV(8)) spi_enc2Inst(.clk(CLK_SE_AR),
-				 .rst(1'b0),
-				 .sck(ENC2_SCK),
-				 //.mosi(BGPIO_SPI_MOSI),
-				 .start(encAdcSpiExchStart),
-				 .miso(ENC2_MISO),				 
-				 //.data_in(spiDataIn),
-				 .data_out(enc2Pos),
-				 .new_data(enc2NewData));
-
-spi #(.CLK_DIV(8)) spi_AdcInst(.clk(CLK_SE_AR),
-				 .rst(1'b0),
-				 .sck(ADC_SCK),
-				 //.mosi(BGPIO_SPI_MOSI),
-				 .start(encAdcSpiExchStart),
-				 .miso(ADC_MISO),				 
-				 //.data_in(spiDataIn),
-				 .data_out(adcData),
-				 .new_data(spiNewData));
-				 
-
-		 
-
-reg [7:0] dataIn;
-wire newDataWire;
-wire [7:0] spiDataWire;
+encoderSpi encoderSpi(.CLK_10MHZ(CLK_SE_AR),
+							 .start(encAdcSpiExchStart),
+							 .spiHalfClock(encSpiHalfClock),
+							 .ENC1_SCK(ENC1_SCK),
+							 .ENC2_SCK(ENC2_SCK),
+							 .ENC1_MISO(ENC1_MISO),
+							 .ENC2_MISO(ENC2_MISO),
+							 .enc1_data(enc1Pos),
+							 .enc2_data(enc2Pos));
 
 reg [3:0] transDataIn;
 wire [7:0] transDataOut = (transDataIn[3:0]<4'hA)? (transDataIn[3:0]+8'h30):(transDataIn[3:0]+8'h37);
@@ -225,6 +178,9 @@ wire [4:0] uartState = timerCounter[14:10];
 
 reg regsChanged = 0;
 
+reg state = 0;
+reg [4:0] uartStateReg = 0;
+wire sendAllow = (timerCounter[9:0] == 10'h3ff);
 always @(posedge CLK_SE_AR) begin
 			
 //	if(clockDivider == 24'd10000000) begin
@@ -256,111 +212,136 @@ always @(posedge CLK_SE_AR) begin
 //		tempMeasStart <= 1'b0;
 //	end
 
-
-	if(newDataWire) begin
-		dataIn <= spiDataWire;	
-	end
-	
-
-	if(dataSendAllow) begin
-		//SYNCHRO <= 1;	
-		//uartState <= uartState + 5'd1;			
-		
-		uartStartSignal <= 1'b1;				
-		case(uartState)			
-			0: begin
-				//
-				transDataIn <= enc1Pos[11:8];
-				end
-			1: begin 				
-				uartEna <= 1;
-				transDataIn <= enc1Pos[7:4]; 
-				uartDataReg <= transDataOut;
-				//uartDataReg <= "B";					
-				end 
-			2: begin 
-				transDataIn <= enc1Pos[3:0];
-				uartDataReg <= transDataOut;
-				//uartDataReg <= "C";				
-				end
-			3: begin
-				uartDataReg <= transDataOut;
-				//uartDataReg <= "D";				
-				end
-			4: begin
-				transDataIn <= enc2Pos[11:8];
-				uartDataReg <= " ";
-				//uartDataReg <= "E";				
-				end			
-			5: begin
-				transDataIn <= enc2Pos[7:4]; 
-				uartDataReg <= transDataOut;
-				//uartDataReg <= "F";				
-				end
-			6: begin
-				transDataIn <= enc2Pos[3:0];				
-				uartDataReg <= transDataOut;  //dallas			
-				end
-			7: begin 
-				uartDataReg <= transDataOut;						
-				end
-			8: begin 
-				transDataIn <= 4'hb;				
-				uartDataReg <= " ";										
-				end
-			9:	begin 
-				transDataIn <= 4'hc;				
-				uartDataReg <= transDataOut;										
-				end				
-			10:	begin 				
-				uartDataReg <= transDataOut;										
-				end				
-			11:begin				
-				transDataIn <= oneWireTemperature[7:4];				
-				uartDataReg <= " ";										
-				end
-			12: begin
-				transDataIn <= oneWireTemperature[3:0];
-				uartDataReg <= transDataOut;			
-				end
-			13: begin				
-				uartDataReg <= transDataOut;				
-				end
-			14: begin
-				uartDataReg <= " ";			
-				transDataIn <= billAccWire[7:4];				 
-				end
-			15: begin
-				 transDataIn <= billAccWire[3:0];				 
-				 uartDataReg <= transDataOut;			
-				end
+	case(state)
+	0: begin
+		if(dataSendAllow) begin
+			state <= 1;
+			uartStateReg[4:0] <= 5'h0;
+		end		
+		else begin
+			uartStartSignal <= 1'b0;
 			
-			16: begin 				 				 				 
-				 uartDataReg <= transDataOut;
-				 billAcc[7:0] <= billAccWire[7:0];
-				end
-			17: begin 				 
-				uartDataReg <= "\r";
+		end
+	end
+	1: begin
+		if(sendAllow) begin
+			uartStateReg <= uartStateReg + 5'h1;
+			case(uartStateReg)			
+				0: begin
+					//					
+					transDataIn <= enc1Pos[11:8];
+					end
+				1: begin 				
+					uartEna <= 1;
+					uartStartSignal <= 1;
+					transDataIn <= enc1Pos[7:4]; 
+					uartDataReg <= transDataOut;
+					//uartDataReg <= "B";					
+					end 
+				2: begin 
+					transDataIn <= enc1Pos[3:0];					
+					uartStartSignal <= 1;
+					uartDataReg <= transDataOut;
+					enc1PosLast <= enc1Pos;
+					//uartDataReg <= "C";				
+					end
+				3: begin
+					uartStartSignal <= 1;
+					uartDataReg <= transDataOut;
+					//uartDataReg <= "D";				
+					end
+				4: begin
+					uartStartSignal <= 1;				
+					transDataIn <= enc2Pos[11:8];
+					uartDataReg <= " ";
+					//uartDataReg <= "E";				
+					end			
+				5: begin
+					uartStartSignal <= 1;				
+					transDataIn <= enc2Pos[7:4]; 
+					uartDataReg <= transDataOut;
+					//uartDataReg <= "F";				
+					end
+				6: begin
+					uartStartSignal <= 1;				
+					transDataIn <= enc2Pos[3:0];
+					enc2PosLast <= enc2Pos;				
+					uartDataReg <= transDataOut;  //dallas			
+					end
+				7: begin 
+					uartStartSignal <= 1;				
+					uartDataReg <= transDataOut;						
+					end
+				8: begin 
+					uartStartSignal <= 1;				
+					transDataIn <= 4'hb;				
+					uartDataReg <= " ";										
+					end
+				9:	begin 
+					uartStartSignal <= 1;				
+					transDataIn <= 4'hc;				
+					uartDataReg <= transDataOut;										
+					end				
+				10:	begin
+ 					uartStartSignal <= 1;
+					uartDataReg <= transDataOut;										
+					end				
+				11:begin		
+					uartStartSignal <= 1;
+					transDataIn <= oneWireTemperature[7:4];				
+					uartDataReg <= " ";										
+					end
+				12: begin
+					uartStartSignal <= 1;
+					transDataIn <= oneWireTemperature[3:0];
+					uartDataReg <= transDataOut;			
+					end
+				13: begin	
+					uartStartSignal <= 1;
+					uartDataReg <= transDataOut;				
+					end
+				14: begin
+					uartStartSignal <= 1;				
+					uartDataReg <= " ";			
+					transDataIn <= billAccWire[7:4];				 
+					end
+				15: begin
+					uartStartSignal <= 1;				
+					 transDataIn <= billAccWire[3:0];				 
+					 uartDataReg <= transDataOut;			
+					end
+				
+				16: begin 		
+					uartStartSignal <= 1;				
+					 uartDataReg <= transDataOut;
+					 billAcc[7:0] <= billAccWire[7:0];
+					end
+				17: begin 		
+					uartStartSignal <= 1;				
+					uartDataReg <= "\r";
 
+					end
+				18: begin
+					uartStartSignal <= 1;				
+					uartDataReg <= "\n";				
+					regsChanged <= 0;
+					oneWireTemperatureL[7:0] <= oneWireTemperature[7:0];
+					 end
+				default: begin
+					uartDataReg <= 0;
+					uartEna <= 0;
+					state <= 0;
+					//oneWireTemperatureL <= oneWireTemperature;
 				end
-			18: begin
-				uartDataReg <= "\n";				
-				regsChanged <= 0;
-				oneWireTemperatureL[7:0] <= oneWireTemperature[7:0];
-				 end
-			default: begin
-				uartDataReg <= 0;
-				uartEna <= 0;
-				//oneWireTemperatureL <= oneWireTemperature;
-			end
-		endcase	
-	end		
-	else begin 			
-		uartStartSignal <= 1'b0;
-		//SYNCHRO <= 0;
+			endcase
+		end
+		else begin
+			uartStartSignal <= 0;
+		end
 	end
 	
-	
+	endcase
+
 	
 	if(uartRxDataReady) begin		
 		//USER_LED0 <= ~USER_LED0;		
@@ -368,14 +349,14 @@ always @(posedge CLK_SE_AR) begin
 		//uartDataReg1 <= uartRxData;
 	end
 	
-	if(enc1PosLast != enc1Pos) begin
-		enc1PosLast <= enc1Pos;
-		regsChanged <= 1;
-	end
-	if(enc2PosLast != enc2Pos) begin
-		enc2PosLast <= enc2Pos;
-		regsChanged <= 1;
-	end
+//	if(enc1PosLast != enc1Pos) begin
+//		enc1PosLast <= enc1Pos;
+//		regsChanged <= 1;
+//	end
+//	if(enc2PosLast != enc2Pos) begin
+//		enc2PosLast <= enc2Pos;
+//		regsChanged <= 1;
+//	end
 	
 end
  

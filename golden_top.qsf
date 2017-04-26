@@ -168,3 +168,5 @@ set_location_assignment PIN_F16 -to ENC2_SCK
 set_location_assignment PIN_F13 -to ENC2_MISO
 set_location_assignment PIN_D3 -to ADC_SCK
 set_location_assignment PIN_D2 -to ADC_MISO
+set_global_assignment -name VERILOG_FILE encoder_spi.v
+set_global_assignment -name VERILOG_FILE adc_spi.v
