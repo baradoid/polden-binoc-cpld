@@ -1,9 +1,5 @@
-/* maxv_5m570z_start_golden_top.v
- This is a top level wrapper file that instanciates the
- golden top project
- */
- 
- module maxv_5m570z_start_golden_top(
+
+module maxv_5m570z_start_golden_top(
  
 input   CLK_SE_AR,
 
@@ -15,7 +11,7 @@ input CAP_PB_1,
 output reg USER_LED0, USER_LED1,
 
 // Connector A 
-output   [  36: 1] 	AGPIO,
+output   [  30: 1] 	AGPIO,
 
 // Connector B
 inout    BGPIO_ONEWIRE,
@@ -25,7 +21,17 @@ input 	BGPIO_UART_RX,
 output 	BGPIO_UART_TX,
 input 	BV_UART_RX,  //BILL_VALIDATOR
 output 	BV_UART_TX,	 //BILL_VALIDATOR
-output   [ 30: 7] 	BGPIO,
+
+output 	ENC1_SCK,
+input 	ENC1_MISO,
+
+output 	ENC2_SCK,
+input 	ENC2_MISO,
+
+output 	ADC_SCK,
+input 	ADC_MISO,
+
+//output   [ 20: 7] 	BGPIO,
 input 	BGPIO_P_1, BGPIO_N_1,
 input 	BGPIO_P_2, BGPIO_N_2,
 input 	BGPIO_P_3, BGPIO_N_3,
@@ -70,13 +76,19 @@ input SPI_MOSI, SPI_SCK, SPI_CSN, SPI_MISO
 
 wire tempDataChanged = (oneWireTemperatureL[7:0] != oneWireTemperature[7:0]);
 wire billDataChanged = (billAcc[7:0] != billAccWire[7:0]);
+wire enc1PosChanged = (enc1Pos[11:0] != enc1PosLast[11:0]);
+wire enc2PosChanged = (enc2Pos[11:0] != enc2PosLast[11:0]);
+wire adcDataChanged = (adcData[7:0] != adcDataL[7:0]);
+
 reg [31:0] timerCounter; always @(posedge CLK_SE_AR) timerCounter <= timerCounter + 31'h1;
-wire dataSendAllow = ((timerCounter[9:0] == 10'h3ff) && (tempDataChanged || billDataChanged));
+wire dataSendAllow = ((timerCounter[9:0] == 10'h3ff) && (tempDataChanged || billDataChanged || enc1PosChanged || enc2PosChanged || adcDataChanged));
 
-assign BGPIO[30] = timerCounter[31];
+wire encAdcSpiExchStart =  (timerCounter[10:0] == 10'hfff); //каждые 400 мкс
 
-assign BGPIO[24] = BV_UART_RX;
-assign BGPIO[23] = BV_UART_TX;
+//assign BGPIO[30] = timerCounter[31];
+
+//assign BGPIO[24] = BV_UART_RX;
+//assign BGPIO[23] = BV_UART_TX;
 
 
 wire uartBusy;
@@ -95,7 +107,7 @@ assign SYNCHRO = uart19200StartSignal;
 //wire uartTxFree = (uartBusyR==8'h0);
 reg [7:0] uartDataReg;
 
-assign BGPIO[22] = uart19200StartSignal;
+//assign BGPIO[22] = uart19200StartSignal;
 
 async_transmitter #(.ClkFrequency(10000000), .Baud(230400)) TX(.clk(CLK_SE_AR),
 																					//.BitTick(uartTick1),
@@ -137,8 +149,8 @@ bv_controller bv_contr_inst(.CLK_10MHZ(CLK_SE_AR),
 									 .uartTxPin(BV_UART_TX),
 									 .uartStartSignal(uart19200StartSignal),
 									 .billAccumed(billAccWire),
-									 .ufmDataValid(BGPIO[12]),
-									 .ufmnRead(BGPIO[10]));
+									 /*.ufmDataValid(BGPIO[12]),
+									 .ufmnRead(BGPIO[10])*/);
 										
 
 
@@ -159,47 +171,47 @@ always @(posedge CLK_SE_AR) begin
 
 end
 
-wire spi1Start = ((spi1Busy==1'b0)&&(spi1BusyR==1'b0));
-wire spi2Start = ((spi2Busy==1'b0)&&(spi2BusyR==1'b0));
-wire spiAdcStart = ((spiAdcBusy==1'b0)&&(spiAdcBusyR==1'b0));
+wire [7:0] adcData;
+reg [7:0] adcDataL;
+wire spiNewData;
 
-spi spi_enc1Inst(.clk(CLK_SE_AR),
+wire [11:0] enc1Pos, enc2Pos;				 
+wire enc1NewData, enc2NewData;
+reg  [11:0]	enc1PosLast, enc2PosLast;		
+
+
+spi #(.CLK_DIV(8)) spi_enc1Inst(.clk(CLK_SE_AR),
 				 .rst(1'b0),
-				 .sck(BGPIO[20]),
+				 .sck(ENC1_SCK),
 				 //.mosi(BGPIO_SPI_MOSI),
-				 .start(spi1Start),
-				 .miso(BGPIO[21]),				 
+				 .start(encAdcSpiExchStart),
+				 .miso(ENC1_MISO),				 
 				 //.data_in(spiDataIn),
 				 .data_out(enc1Pos),
 				 .new_data(enc1NewData));
 
-spi spi_enc2Inst(.clk(CLK_SE_AR),
+spi #(.CLK_DIV(8)) spi_enc2Inst(.clk(CLK_SE_AR),
 				 .rst(1'b0),
-				 .sck(BGPIO[16]),
+				 .sck(ENC2_SCK),
 				 //.mosi(BGPIO_SPI_MOSI),
-				 .start(spi2Start),
-				 .miso(BGPIO[17]),				 
+				 .start(encAdcSpiExchStart),
+				 .miso(ENC2_MISO),				 
 				 //.data_in(spiDataIn),
 				 .data_out(enc2Pos),
 				 .new_data(enc2NewData));
 
-spi spi_AdcInst(.clk(CLK_SE_AR),
+spi #(.CLK_DIV(8)) spi_AdcInst(.clk(CLK_SE_AR),
 				 .rst(1'b0),
-				 .sck(BGPIO[18]),
+				 .sck(ADC_SCK),
 				 //.mosi(BGPIO_SPI_MOSI),
-				 .start(spiAdcStart),
-				 .miso(BGPIO[19]),				 
+				 .start(encAdcSpiExchStart),
+				 .miso(ADC_MISO),				 
 				 //.data_in(spiDataIn),
 				 .data_out(adcData),
 				 .new_data(spiNewData));
 				 
 
-wire [7:0] adcData;
-wire spiNewData;
-
-wire [11:0] enc1Pos, enc2Pos;				 
-wire enc1NewData, enc2NewData;
-reg  [11:0]	enc1PosLast, enc2PosLast;				 
+		 
 
 reg [7:0] dataIn;
 wire newDataWire;
